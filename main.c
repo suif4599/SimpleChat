@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "c_include/simple_tcp_connect.h"
+#include "simple_tcp_connect.h"
 
 int main() {
     test();

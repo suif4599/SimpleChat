@@ -14,7 +14,7 @@
 #include <unistd.h>
 #endif
 
-#include "c_include/simple_tcp_connect.h"
+#include "simple_tcp_connect.h"
 
 void test() {
     printf("Hello, World!\n");
