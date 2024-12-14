@@ -17,5 +17,5 @@
 #include "simple_tcp_connect.h"
 
 void test() {
-    printf("Hello, World!\n");
+    printf("Test function called.\n");
 }
