@@ -28,7 +28,7 @@ struct Dict* Dict_Create(size_t size)
     return dict;
 }
 
-void Dict_Delete(struct Dict dict)
+void Dict_Destroy(struct Dict dict)
 {
     free(dict.keys);
     free(dict.values);
@@ -58,12 +58,24 @@ int Dict_Add(struct Dict dict, int key, void *value)
 
 int Dict_Remove(struct Dict dict, int key)
 {
-
+    int index = find_gt(dict.keys, dict.len, key);
+    if (index == dict.len) return -1;
+    for (size_t i = index; i < dict.len - 1; i++)
+    {
+        dict.keys[i] = dict.keys[i + 1];
+        dict.values[i] = dict.values[i + 1];
+    }
+    dict.len--;
+    return 0;
 }
 
 int Dict_Modify(struct Dict dict, int key, void *value)
 {
-
+    int index = find_gt(dict.keys, dict.len, key);
+    if (index == 0) return -1;
+    if (dict.keys[index - 1] != key) return -1;
+    dict.values[index - 1] = value;
+    return 0;
 }
 
 size_t find_gt(int* list, size_t len, int value) // list is ascending
