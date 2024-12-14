@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "stdlib.h": "c",
-        "simple_tcp_connect.h": "c"
+        "simple_tcp_connect.h": "c",
+        "error_interface.h": "c"
     }
 }
