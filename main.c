@@ -2,10 +2,15 @@
 #include <stdlib.h>
 #include "simple_tcp_connect.h"
 
+#ifndef _WIN32
+#ifndef __linux__
+#error "Unsupported OS"
+#endif
+#endif
 
 int main() {
     struct Server* server= create_server("0.0.0.0", 10123, 0);
-    if(server == NULL)
+    if (server == NULL)
     {
         return 1;
     }
