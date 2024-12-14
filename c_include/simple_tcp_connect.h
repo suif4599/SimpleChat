@@ -8,6 +8,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
 #endif
 
 #ifndef SIMPLE_TCP_CONNECT_H

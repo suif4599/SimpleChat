@@ -56,7 +56,11 @@ struct Server* create_server(const char *ip, const unsigned short port, const in
         return NULL;
     }
     server->server_socket = listen_socket;
+    #ifdef _WIN32
     strcpy_s(server->ip, 48, ip);
+    #else
+    strcpy(server->ip, ip);
+    #endif
     server->port = port;
     server->ipv6 = ipv6;
     return server;
