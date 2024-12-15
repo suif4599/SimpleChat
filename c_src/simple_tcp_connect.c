@@ -16,6 +16,8 @@ if (on_disconnect != NULL)                                            \
 close(client->client_socket);                                         \
 free(client);                                                         \
 epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->client_socket, NULL);
+#define MAX_RECV_LEN 1500
+
 
 int set_non_blocking(SOCKET socket)
 {
@@ -138,7 +140,7 @@ int start_server(struct Server server, int (*on_connect)(struct Client*),
         struct sockaddr_in addr = {0};
         struct Client* client;
         int size = 0;
-        char buffer[1501] = {0};
+        char buffer[MAX_RECV_LEN + 1] = {0};
         for (int i = 0; i < epoll_ret; i++)
         {
             if (events[i].data.fd == server.server_socket)
@@ -171,7 +173,45 @@ int start_server(struct Server server, int (*on_connect)(struct Client*),
             else
             {
                 client = (struct Client*)events[i].data.ptr;
-                int bytes = recv(client->client_socket, buffer, 1500, 0);
+                int bytes = recv(client->client_socket, buffer, MAX_RECV_LEN, 0);
+                if (bytes == MAX_RECV_LEN)
+                {
+                    int len = MAX_RECV_LEN;
+                    char* longer_buffer = (char*)malloc(len + MAX_RECV_LEN + 1);
+                    if (longer_buffer == NULL)
+                    {
+                        show_error("MemoryError", "Could not allocate memory for buffer.");
+                        return -1;
+                    }
+                    longer_buffer[len] = '\0';
+                    memcpy(longer_buffer, buffer, len);
+                    while ((bytes = recv(client->client_socket, (longer_buffer + len), MAX_RECV_LEN, 0)) == MAX_RECV_LEN);
+                    {
+                        len += MAX_RECV_LEN;
+                        longer_buffer = (char*)realloc(longer_buffer, len + MAX_RECV_LEN + 1);
+                        if (longer_buffer == NULL)
+                        {
+                            show_error("MemoryError", "Could not reallocate memory for buffer.");
+                            return -1;
+                        }
+                        longer_buffer[len] = '\0';
+                        printf("Reallocated buffer, length = %d, bytes = %d\n", len, bytes);
+                    }
+                    // if exactly there's no more data to read, bytes == -1
+                    if (on_recv != NULL)
+                        if (on_recv(client, longer_buffer) == -1)
+                        {
+                            ON_DISCONNECT;
+                            free(longer_buffer);
+                            continue;
+                        }
+                    free(longer_buffer);
+                    if (bytes == 0)
+                    {
+                        ON_DISCONNECT;
+                    }
+                    continue;
+                }
                 if (bytes == -1)
                 {
                     close(client->client_socket);

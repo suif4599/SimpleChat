@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "simple_tcp_connect.h"
 
 #ifndef _WIN32
@@ -16,7 +17,7 @@ int on_connect(struct Client* client)
 
 int on_recv(struct Client* client, char* buffer)
 {
-    printf("Received data from client %s: %s\n", client->ip, buffer);
+    printf("Received data from client %s: %s, length = %lu\n", client->ip, buffer, strlen(buffer));
     return 0;
 }
 
