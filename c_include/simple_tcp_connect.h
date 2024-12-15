@@ -35,6 +35,7 @@ struct Client
 
 
 struct Server* create_server(const char *ip, const unsigned short port, const int ipv6);
-void start_server(struct Server server);
+int start_server(struct Server server, int (*on_connect)(struct Client*), 
+    int (*on_recv)(struct Client*, char*), int (*on_disconnect)(struct Client*));
 
 #endif // SIMPLE_TCP_CONNECT_H;

@@ -6,6 +6,17 @@
 #include "simple_tcp_connect.h"
 #include "error_interface.h"
 
+#define ON_DISCONNECT                                                 \
+if (on_disconnect != NULL)                                            \
+    if (on_disconnect(client) == -1)                                  \
+    {                                                                 \
+        show_error("DisconnectError", "Error disconnecting client."); \
+        return -1;                                                    \
+    }                                                                 \
+close(client->client_socket);                                         \
+free(client);                                                         \
+epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->client_socket, NULL);
+
 int set_non_blocking(SOCKET socket)
 {
     #ifdef _WIN32
@@ -90,7 +101,14 @@ struct Server* create_server(const char *ip, const unsigned short port, const in
     return server;
 }
 
-void start_server(struct Server server)
+int start_server(struct Server server, int (*on_connect)(struct Client*), 
+    int (*on_recv)(struct Client*, char*), int (*on_disconnect)(struct Client*))
+    // leave callbacks NULL to unset them
+    // return -1 to disconnect client and auto call disconnect callback
+    // never close client socket in any callback
+    // never free anything in any callback
+    // if on_disconnect returns -1, it will raise an error
+    // on_disconnect is called when client disconnects normally
 {
     #ifdef _WIN32
     #elif __linux__
@@ -98,23 +116,23 @@ void start_server(struct Server server)
     if (epoll_fd == -1)
     {
         show_error("EpollError", "Could not create epoll instance.");
-        return;
+        return -1;
     }
     struct epoll_event event;
     event.events = EPOLLIN | EPOLLET;
     event.data.fd = server.server_socket;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server.server_socket, &event) == -1) {
         show_error("EpollError", "Could not add epoll event.");
+        return -1;
     }
     struct epoll_event events[128];
     while (1)
     {
-        printf("Waiting for events.\n");
         int epoll_ret = epoll_wait(epoll_fd, events, 128, 1000);
         if (epoll_ret == -1)
         {
             show_error("EpollError", "Could not wait for events.");
-            return;
+            return -1;
         }
         else if (epoll_ret == 0) continue;
         struct sockaddr_in addr = {0};
@@ -144,11 +162,14 @@ void start_server(struct Server server)
                     free(client);
                     continue;
                 }
-                printf("Client connected: %s\n", client->ip);
+                if (on_connect != NULL)
+                    if (on_connect(client) == -1)
+                    {
+                        ON_DISCONNECT;
+                    }
             }
             else
             {
-                printf("Data received.\n");
                 client = (struct Client*)events[i].data.ptr;
                 int bytes = recv(client->client_socket, buffer, 1500, 0);
                 if (bytes == -1)
@@ -160,14 +181,15 @@ void start_server(struct Server server)
                 }
                 else if (bytes == 0)
                 {
-                    close(client->client_socket);
-                    free(client);
-                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->client_socket, NULL);
-                    printf("Client disconnected.\n");
+                    ON_DISCONNECT;
                 }
                 else
                 {
-                    printf("%s\n", buffer);
+                    if (on_recv != NULL)
+                        if (on_recv(client, buffer) == -1)
+                        {
+                            ON_DISCONNECT;
+                        }
                 }
 
             }
