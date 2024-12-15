@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <fcntl.h>
 typedef int SOCKET;
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
@@ -25,6 +26,15 @@ struct Server
     int ipv6;
 };
 
+struct Client
+{
+    SOCKET client_socket;
+    char ip[48];
+    int ipv6;
+};
+
+
 struct Server* create_server(const char *ip, const unsigned short port, const int ipv6);
+void start_server(struct Server server);
 
 #endif // SIMPLE_TCP_CONNECT_H;

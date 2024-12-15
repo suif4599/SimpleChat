@@ -15,6 +15,7 @@ int main() {
         return 1;
     }
     printf("Server created, ip: %s, port: %hu\n", server->ip, server->port);
+    start_server(*server);
     free(server);
     return 0;
 }

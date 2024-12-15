@@ -6,6 +6,24 @@
 #include "simple_tcp_connect.h"
 #include "error_interface.h"
 
+int set_non_blocking(SOCKET socket)
+{
+    #ifdef _WIN32
+    u_long mode = 1;
+    if (ioctlsocket(socket, FIONBIO, &mode) != 0) {
+        show_error("SocketError", "Failed to set non-blocking mode.");
+        return -1;
+    }
+    #elif __linux__
+    int flags = fcntl(socket, F_GETFL, 0);
+    if (flags == -1)
+    {
+        show_error("SocketError", "Failed to get socket flags.");
+        return -1;
+    }
+    return fcntl(socket, F_SETFL, flags | O_NONBLOCK);
+    #endif
+}
 
 struct Server* create_server(const char *ip, const unsigned short port, const int ipv6)
 {
@@ -56,6 +74,11 @@ struct Server* create_server(const char *ip, const unsigned short port, const in
         show_error("MemoryError", "Could not allocate memory for server.");
         return NULL;
     }
+    set_non_blocking(listen_socket);
+    #ifdef __linux__
+    int optval = 1;
+    setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    #endif
     server->server_socket = listen_socket;
     #ifdef _WIN32
     strcpy_s(server->ip, 48, ip);
@@ -86,7 +109,8 @@ void start_server(struct Server server)
     struct epoll_event events[128];
     while (1)
     {
-        int epoll_ret = epoll_wait(epoll_fd, events, 128, 1);
+        printf("Waiting for events.\n");
+        int epoll_ret = epoll_wait(epoll_fd, events, 128, 1000);
         if (epoll_ret == -1)
         {
             show_error("EpollError", "Could not wait for events.");
@@ -94,7 +118,9 @@ void start_server(struct Server server)
         }
         else if (epoll_ret == 0) continue;
         struct sockaddr_in addr = {0};
+        struct Client* client;
         int size = 0;
+        char buffer[1501] = {0};
         for (int i = 0; i < epoll_ret; i++)
         {
             if (events[i].data.fd == server.server_socket)
@@ -102,16 +128,48 @@ void start_server(struct Server server)
                 int client_socket = accept(server.server_socket, (struct sockaddr*)&addr, &size);
                 if (client_socket == -1) continue;
                 event.events = EPOLLIN | EPOLLET;
-                event.data.fd = server.server_socket;
+                client = (struct Client*)malloc(sizeof(struct Client));
+                client->client_socket = client_socket;
+                #ifdef _WIN32
+                strcpy_s(client->ip, 48, inet_ntoa(addr.sin_addr));
+                #else
+                strcpy(client->ip, inet_ntoa(addr.sin_addr));
+                #endif
+                client->ipv6 = server.ipv6;
+                event.data.ptr = (void*)client;
+                set_non_blocking(client_socket);
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_socket, &event) == -1)
                 {
                     close(client_socket);
+                    free(client);
                     continue;
                 }
+                printf("Client connected: %s\n", client->ip);
             }
             else
             {
-                
+                printf("Data received.\n");
+                client = (struct Client*)events[i].data.ptr;
+                int bytes = recv(client->client_socket, buffer, 1500, 0);
+                if (bytes == -1)
+                {
+                    close(client->client_socket);
+                    free(client);
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->client_socket, NULL);
+                    printf("Error receiving data.\n");
+                }
+                else if (bytes == 0)
+                {
+                    close(client->client_socket);
+                    free(client);
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->client_socket, NULL);
+                    printf("Client disconnected.\n");
+                }
+                else
+                {
+                    printf("%s\n", buffer);
+                }
+
             }
             
         }
