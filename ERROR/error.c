@@ -5,11 +5,11 @@
 #include <string.h>
 
 
-extern Error* GLOBAL_ERROR = NULL;
+Error* GLOBAL_ERROR = NULL;
 static const char* REPEATED_ERROR_NAME = "RepeatedError";
 static const char* REPEATED_ERROR_MSG = "NULL";
 
-void ForceExit(const char* name, char* raiser, const char* message) {
+void ForceExit(const char* name, const char* raiser, const char* message) {
     printf("Memory error occured when %s raises <%s>: %s\n", raiser, name, message);
     PrintError();
     ReleaseError();
@@ -17,7 +17,7 @@ void ForceExit(const char* name, char* raiser, const char* message) {
 }
 
 
-void RaiseError(const char* name, char* raiser, const char* message, void* data) {
+void RaiseError(const char* name, const char* raiser, const char* message, void* data) {
     Error* error = malloc(sizeof(Error));
     if (error == NULL)
         ForceExit(name, raiser, message);

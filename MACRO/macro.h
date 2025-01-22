@@ -1,5 +1,6 @@
 #ifndef __MACRO_H__
 #define __MACRO_H__
+#include "logic.h"
 
 #define STR_ASSIGN_TO_SCRATCH(dest, src, retval) do { \
     dest = malloc(strlen(src) + 1); \
