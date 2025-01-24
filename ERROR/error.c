@@ -1,13 +1,42 @@
 #include "error.h"
-#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
+#include <unistd.h>
 
 
 Error* GLOBAL_ERROR = NULL;
+static int KEYBOARD_INTERRUPT = 0; // Set to 1 if the program is interrupted by the user
 static const char* REPEATED_ERROR_NAME = "RepeatedError";
-static const char* REPEATED_ERROR_MSG = "NULL";
+
+void print_system_error(const char *prefix) {
+#ifdef _WIN32
+    LPVOID lpMsgBuf;
+    DWORD dw = GetLastError();
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        dw,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR) &lpMsgBuf,
+        0, NULL );
+    if (prefix != NULL) printf("%s: ", prefix);
+    printf("%s\n", lpMsgBuf);
+    LocalFree(lpMsgBuf);
+#elif __linux__
+    if (prefix != NULL) printf("%s: ", prefix);
+    char buf[1024];
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+    strerror_r(errno, buf, sizeof(buf));
+    printf(YELLOW_TERMINAL "%s" RESET_TERMINAL "\n", buf);
+#else
+    printf("%s\n", strerror_r(errno, buf, sizeof(buf)));
+#endif
+#endif
+}
 
 void ForceExit(const char* name, const char* raiser, const char* message) {
     printf("Memory error occured when %s raises <%s>: %s\n", raiser, name, message);
@@ -17,7 +46,7 @@ void ForceExit(const char* name, const char* raiser, const char* message) {
 }
 
 
-void RaiseError(const char* name, const char* raiser, const char* message, void* data) {
+void RaiseError(const char* name, const char* raiser, const char* message, const char* file, int line, void* data) {
     Error* error = malloc(sizeof(Error));
     if (error == NULL)
         ForceExit(name, raiser, message);
@@ -33,12 +62,18 @@ void RaiseError(const char* name, const char* raiser, const char* message, void*
     if (error->message == NULL)
         ForceExit(name, raiser, message);
     strcpy(error->message, message);
+    error->file = (char*)malloc(strlen(file) + 1);
+    if (error->file == NULL)
+        ForceExit(name, raiser, message);
+    strcpy(error->file, file);
+    error->line = line;
     error->data = data;
     error->next = GLOBAL_ERROR;
+    GLOBAL_ERROR = error;
 }
 
-void RepeatError(const char* raiser) {
-    RaiseError(REPEATED_ERROR_NAME, raiser, REPEATED_ERROR_MSG, NULL);
+void RepeatError(const char* raiser, const char* file, int line) {
+    RaiseError(REPEATED_ERROR_NAME, raiser, "Repeated error", file, line, NULL);
 }
 
 void ReleaseError() {
@@ -56,18 +91,20 @@ void ReleaseError() {
 }
 
 void PrintError() {
-    printf("Traceback (most recent call last):\n");
+    #ifdef __linux__
+    printf(RED_TERMINAL "User Traceback (most recent call last):" RESET_TERMINAL "\n");
+    #endif
     Error* error = GLOBAL_ERROR;
     while (error != NULL) {
-        if (strcmp(error->name, REPEATED_ERROR_NAME) == 0) {
-            printf("    Repeated from %s\n", error->raiser);
-        } else {
-            printf("    Error: %s\n", error->name);
-            printf("        Raiser: %s\n", error->raiser);
-            printf("        Message: %s\n", error->message);
-        }
+        #ifdef __linux__
+        printf(YELLOW_TERMINAL "%s" RESET_TERMINAL " from " BOLD_TERMINAL "%s" RESET_TERMINAL " in " BOLD_TERMINAL "%s" RESET_TERMINAL ", line %d\n", 
+            error->name, error->raiser, error->file, error->line);
+        #endif
+        printf("    %s\n", error->message);
         error = error->next;
     }
+    printf(RED_TERMINAL "System error info:" RESET_TERMINAL "\n");
+    print_system_error(NULL);
 }
 
 Error* CatchError(const char* name) {
@@ -78,4 +115,28 @@ Error* CatchError(const char* name) {
         error = error->next;
     }
     return NULL;
+}
+
+void sigint_handler(int signo) {
+    KEYBOARD_INTERRUPT = 1;
+}
+
+int InitErrorStream() {
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        RaiseError("SignalError", "InitErrorStream", "Failed to set signal handler for SIGINT", __FILE__, __LINE__, NULL);
+        return -1;
+    }
+    return 0;
+}
+
+int RefreshErrorStream() {
+    if (KEYBOARD_INTERRUPT) {
+        RaiseError("KeyboardInterrupt", "RefreshErrorStream", "Keyboard interrupt", __FILE__, __LINE__, NULL);
+        return -1;
+    }
+    return 0;
 }
