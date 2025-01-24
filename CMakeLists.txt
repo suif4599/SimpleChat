@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 
+# Release mode by default
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
+endif()
+
 # Set the project name
 project(SimpleChat)
 
@@ -13,5 +18,13 @@ foreach(excluded_file IN LISTS EXCLUDED_FILES)
 endforeach()
 
 # Add the executable
-# message("SOURCES: ${SOURCES}")
 add_executable(SimpleChat ${SOURCES})
+
+# Add libraries
+if(WIN32)
+    target_link_libraries(SimpleChat PRIVATE Ws2_32)
+endif()
+
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()

@@ -3,6 +3,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <stdint.h>
 #elif __linux__
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -19,7 +20,7 @@ typedef int socket_t;
 typedef SOCKET socket_t;
 #endif
 
-#define CLIENT_BUFFER_SIZE 3
+#define CLIENT_BUFFER_SIZE 300
 
 
 typedef struct {
@@ -47,10 +48,10 @@ Server *ServerCreate(const char *name, uint16_t port,
     int(*on_flip)(struct ServerType* server),
     int(*on_message)(struct ServerType* server,  Client* client),
     int(*on_disconnect)(struct ServerType* server, Client* client, int on_error)); // Create a new server, return NULL if failed
-void ServerRelease(Server *server);
+void ServerRelease(Server *server); // Release the server, it won't close the socket, it won't raise any error
 int ServerMainloop(Server *server); // Main loop of the server, return 0 if quiting normally, otherwise return -1
 
 int ClientInit(Client* client); // Initialize the client, return -1 if failed
-void ClientRelease(Client* client); // Release the client
+void ClientRelease(Client* client); // Release the client, it won't close the socket, it won't raise any error
 
 #endif

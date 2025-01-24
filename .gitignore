@@ -1,4 +1,5 @@
 .vscode/
 .git/
 build/
+temp/
 structure.md

@@ -41,6 +41,9 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define RepeatedError(raiser) RepeatError(raiser, __FILE__, __LINE__) // ("RepeatedError", raiser, message, NULL)
 #define SocketError(raiser, message) RaiseError("SocketError", raiser, message, __FILE__, __LINE__, NULL)
 #define EpollError(raiser, message) RaiseError("EpollError", raiser, message, __FILE__, __LINE__, NULL)
+#define SystemError(raiser, message) RaiseError("SystemError", raiser, message, __FILE__, __LINE__, NULL)
+#define EventError(raiser, message) RaiseError("EventError", raiser, message, __FILE__, __LINE__, NULL)
+
 
 #ifdef __linux__
 #define RED_TERMINAL "\033[31m"
