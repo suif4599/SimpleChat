@@ -23,6 +23,7 @@ add_executable(SimpleChat ${SOURCES})
 # Add libraries
 if(WIN32)
     target_link_libraries(SimpleChat PRIVATE Ws2_32)
+    add_compile_definitions(_WINSOCK_DEPRECATED_NO_WARNINGS)
 endif()
 
 if(MSVC)

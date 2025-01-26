@@ -1,9 +1,10 @@
-#include "linux_ui.h"
+#include "ui.h"
 
+#ifdef __linux__
 char *readLine(int n) {
     size_t len = 0;
     int bufferSize = n;
-    char *buffer = (char *)malloc(bufferSize * sizeof(char));
+    char *buffer = (char *)malloc(bufferSize);
     if (buffer == NULL) {
         MemoryError("readLine", "Failed to allocate memory for buffer");
         return NULL;
@@ -12,7 +13,7 @@ char *readLine(int n) {
     while ((c = getchar()) != '\n' && c != EOF) {
         if (len + 1 >= bufferSize) {
             bufferSize += n;
-            buffer = (char *)realloc(buffer, bufferSize * sizeof(char));
+            buffer = (char *)realloc(buffer, bufferSize);
             if (buffer == NULL) {
                 MemoryError("readLine", "Failed to reallocate memory for buffer");
                 free(buffer);
@@ -24,3 +25,4 @@ char *readLine(int n) {
     buffer[len] = '\0';
     return buffer;
 }
+#endif

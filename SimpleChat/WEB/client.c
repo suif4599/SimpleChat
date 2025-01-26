@@ -25,7 +25,7 @@ static void delete_index_from_ptr_array(void **arr, int index, int len) {
 }
 
 static int send_msg(Server *server, Client *client, const char *msg) {
-    int ret = send(client->target_socket, msg, strlen(msg), 0);
+    int ret = send(client->target_socket, msg, (int)strlen(msg), 0);
     if (ret < 0) {
         SocketError("send_msg", "Failed to send message");
         return -1;
@@ -104,6 +104,11 @@ Server *ServerCreate(const char *name, uint16_t port,
         int opt = 1;
         if (setsockopt(server->listen_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) < 0) {
             SocketError("ServerCreate", "Failed to set socket reusable");
+            #ifdef __linux__
+            close(server->listen_socket);
+            #elif _WIN32
+            closesocket(server->listen_socket);
+            #endif
             return NULL;
         }
         if (bind(server->listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
@@ -128,6 +133,15 @@ Server *ServerCreate(const char *name, uint16_t port,
         else server->on_message = on_message;
         if (on_disconnect == NULL) server->on_disconnect = empty_on_disconnect;
         else server->on_disconnect = on_disconnect;
+        #ifdef _WIN32
+        server->temp_socket = INVALID_SOCKET;
+        if (InitializeUserInterface() < 0) {
+            RepeatedError("ServerCreate");
+            return NULL;
+        }
+        #elif __linux__
+        server->temp_socket = -1;
+        #endif
         return server;
     }
 
@@ -264,6 +278,9 @@ int ServerMainloop(Server *server) {
                             if (func_ret == 0) return 0;
                             continue;
                         }
+                        LinkDelete(&server->clients, client);
+                        close(client->client_socket);
+                        close(client->target_socket);
                         func_ret = server->on_disconnect(server, client, (ret_len < 0) ? 1 : 0);
                         if (func_ret < 0) {
                             RepeatedError("ServerMainloop");
@@ -296,6 +313,7 @@ int ServerMainloop(Server *server) {
 #elif _WIN32
 int ServerMainloop(Server *server) {
     WSAEVENT evfd = WSACreateEvent();
+    char* msg_for_send = NULL;
     if (evfd == WSA_INVALID_EVENT) {
         EventError("ServerMainloop", "Failed to create WSA event");
         return -1;
@@ -327,8 +345,7 @@ int ServerMainloop(Server *server) {
                     EventError("ServerMainloop", "Failed to get network events");
                     return -1;
                 }
-                if (net_event.lNetworkEvents & FD_ACCEPT) {
-                    // Accept the client
+                if (net_event.lNetworkEvents & FD_ACCEPT) { // listen socket have a new connection
                     if (net_event.iErrorCode[FD_ACCEPT_BIT] != 0) {
                         EventError("ServerMainloop", "Failed to accept the client");
                         return -1;
@@ -353,14 +370,26 @@ int ServerMainloop(Server *server) {
                     }
                     client->client_socket = client_socket;
                     client->addr = addr;
-                    ClientInit(client);
+                    if (ClientInit(client, server->temp_socket, server->port) == -1) {
+                        closesocket(client_socket);
+                        free(client);
+                        RepeatedError("ServerMainloop");
+                        return -1;
+                    }
+                    server->temp_socket = INVALID_SOCKET;
                     LinkAppend(&server->clients, client);
                     WSAEVENT client_event = WSACreateEvent();
                     if (client_event == WSA_INVALID_EVENT) {
+                        LinkDelete(&server->clients, client);
+                        closesocket(client_socket);
+                        closesocket(client->target_socket);
                         EventError("ServerMainloop", "Failed to create WSA event for client");
                         return -1;
                     }
                     if (WSAEventSelect(client_socket, client_event, FD_READ | FD_CLOSE) == SOCKET_ERROR) {
+                        LinkDelete(&server->clients, client);
+                        closesocket(client_socket);
+                        closesocket(client->target_socket);
                         EventError("ServerMainloop", "Failed to select WSA event for client");
                         return -1;
                     }
@@ -379,7 +408,7 @@ int ServerMainloop(Server *server) {
                     EventError("ServerMainloop", "Failed to get network events");
                     return -1;
                 }
-                if (net_event.lNetworkEvents & FD_READ) {
+                if (net_event.lNetworkEvents & FD_READ) { // client send some message
                     if (net_event.iErrorCode[FD_READ_BIT] != 0) {
                         EventError("ServerMainloop", "Failed to read the client socket");
                         return -1;
@@ -403,6 +432,9 @@ int ServerMainloop(Server *server) {
                             return -1;
                         }
                         func_ret = server->on_disconnect(server, clients[index], (ret_len < 0) ? 1 : 0);
+                        closesocket(clients[index]->target_socket);
+                        closesocket(clients[index]->client_socket);
+                        LinkDelete(&server->clients, clients[index]);
                         ClientRelease(clients[index]);
                         delete_index_from_ptr_array((void *)&clients[0], index, nEvents);
                         nEvents--;
@@ -421,7 +453,7 @@ int ServerMainloop(Server *server) {
                             memset(buffer + buffer_len - CLIENT_BUFFER_SIZE, 0, CLIENT_BUFFER_SIZE);
                             ret_len = recv(clients[index]->client_socket, buffer + buffer_len - CLIENT_BUFFER_SIZE, CLIENT_BUFFER_SIZE, 0);
                         }
-                        if (ret_len > 0 /*|| GET_LAST_ERROR == 11*/) {
+                        if (ret_len > 0) {
                             if (clients[index]->message != NULL) free(clients[index]->message);
                             clients[index]->message = buffer;
                             func_ret = server->on_message(server, clients[index]);
@@ -433,6 +465,11 @@ int ServerMainloop(Server *server) {
                             continue;
                         }
                         func_ret = server->on_disconnect(server, clients[index], (ret_len < 0) ? 1 : 0);
+                        closesocket(clients[index]->target_socket);
+                        closesocket(clients[index]->client_socket);
+                        LinkDelete(&server->clients, clients[index]);
+                        ClientRelease(clients[index]);
+                        delete_index_from_ptr_array((void *)&clients[0], index, nEvents);
                         if (func_ret < 0) {
                             RepeatedError("ServerMainloop");
                             return -1;
@@ -450,6 +487,9 @@ int ServerMainloop(Server *server) {
                         return -1;
                     }
                     func_ret = server->on_disconnect(server, clients[index], 0);
+                    closesocket(clients[index]->target_socket);
+                    closesocket(clients[index]->client_socket);
+                    LinkDelete(&server->clients, clients[index]);
                     ClientRelease(clients[index]);
                     delete_index_from_ptr_array((void *)&clients[0], index, nEvents);
                     nEvents--;
@@ -460,6 +500,17 @@ int ServerMainloop(Server *server) {
                     if (func_ret == 0) return 0;
                 }
             }
+        }
+        if ((msg_for_send = readLine(-1)) != NULL) {
+            moveUpFirst();
+            printf("Sending message: %s\n", msg_for_send);
+            if (send_msg_to_all_clients(server, msg_for_send) < 0) {
+                free(msg_for_send);
+                RepeatedError("ServerMainloop");
+                return -1;
+            }
+            free(msg_for_send);
+            msg_for_send = NULL;
         }
         func_ret = server->on_flip(server);
         if (func_ret < 0) {
@@ -485,6 +536,7 @@ int ClientInit(Client* client, socket_t target_socket, uint16_t server_port) {
     if SOCKET_IS_INVALID(target_socket) {
         char buf[64] = {0};
         int port;
+        Sleep(50);
         if (recv(client->client_socket, buf, 64, 0) < 0) {
             SocketError("ClientInit", "Failed to receive message from client");
             return -1;
@@ -577,7 +629,12 @@ int ConnectServerTo(Server *server, const char *ip, uint16_t port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = inet_addr(ip);
-    if (connect(server->temp_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    #ifdef __linux__
+    if (connect(server->temp_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
+    #elif _WIN32
+    if (connect(server->temp_socket, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
+    #endif
+    {
         #ifdef _WIN32
         closesocket(server->temp_socket);
         #elif __linux__
@@ -589,7 +646,12 @@ int ConnectServerTo(Server *server, const char *ip, uint16_t port) {
     if (socket_is_valid) {
         char buffer[64] = {0};
         sprintf(buffer, "%d", server->port);
-        if (send(server->temp_socket, buffer, strlen(buffer), 0) < 0) {
+        #ifdef __linux__
+        if (send(server->temp_socket, buffer, (int)strlen(buffer), 0) < 0)
+        #elif _WIN32
+        if (send(server->temp_socket, buffer, (int)strlen(buffer), 0) == SOCKET_ERROR)
+        #endif
+        {
             #ifdef _WIN32
             closesocket(server->temp_socket);
             #elif __linux__

@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "SimpleChat/WEB/client.h"
-#include "user.h"
+#include "ERROR/error.h"
+#include "MACRO/macro.h"
+#include "SimpleChat/WEB/client.h"
 
 int on_connect(Server* server, Client* client) {
     printf("New client connected, ip = %s, port = %d\n", client->ip, client->port);

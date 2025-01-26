@@ -23,8 +23,7 @@ typedef SOCKET socket_t;
 #define SOCKET_IS_INVALID(s) ((s) == INVALID_SOCKET)
 #endif
 
-#define CLIENT_BUFFER_SIZE 300
-#define STDIN_BUFFER_SIZE 5
+#include "../../config.h"
 
 
 typedef struct {
