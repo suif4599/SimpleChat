@@ -18,15 +18,27 @@ int on_message(Server* server, Client* client) {
     return 1;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    // Usage: ./main <name> <port> [<client_ip> <client_port>]
+    if (argc != 5 && argc != 3) {
+        printf("Usage: %s <name> <port> [<client_ip> <client_port>]\n", argv[0]);
+        return 1;
+    }
     InitErrorStream();
-    Server *server = ServerCreate("TestClient", 8080, on_connect, NULL, on_message, on_disconnect);
+    Server *server = ServerCreate(argv[1], (uint16_t)atoi(argv[2]), on_connect, NULL, on_message, on_disconnect);
     if (server == NULL) {
         PrintError();
         ReleaseError();
         return 1;
     }
     printf("Server created successfully\n");
+    if (argc == 5) {
+        if (ConnectServerTo(server, argv[3], (uint16_t)atoi(argv[4])) == -1) {
+            PrintError();
+            ReleaseError();
+            return 1;
+        }
+    }
     int ret = ServerMainloop(server);
     if (ret < 0) {
         PrintError();

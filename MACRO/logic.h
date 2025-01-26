@@ -54,3 +54,6 @@
     DEFER(__FOREACH_WITH_TRIPLE_PREFIX_)(prefix1, prefix2, prefix3, IS_EMPTY_0(__VA_ARGS__))(macro, prefix1, prefix2, prefix3, __VA_ARGS__)
 #define __FOREACH_WITH_TRIPLE_PREFIX_(prefix1, prefix2, prefix3, x) IF(x)(EAT)(__FOREACH_WITH_TRIPLE_PREFIX)
 #define FOREACH_WITH_TRIPLE_PREFIX(macro, prefix1, prefix2, prefix3, ...) EVAL5(__FOREACH_WITH_TRIPLE_PREFIX(macro, prefix1, prefix2, prefix3, __VA_ARGS__))
+
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))

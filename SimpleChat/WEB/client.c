@@ -6,7 +6,6 @@
 #include <stdio.h>
 
 
-
 static int empty_on_connect(Server* server, Client* client) {
     return 1;
 }
@@ -23,6 +22,27 @@ static void delete_index_from_ptr_array(void **arr, int index, int len) {
     if (index < 0 || index >= len) return;
     for (int i = index; i < len - 1; i++)
         arr[i] = arr[i + 1];
+}
+
+static int send_msg(Server *server, Client *client, const char *msg) {
+    int ret = send(client->target_socket, msg, strlen(msg), 0);
+    if (ret < 0) {
+        SocketError("send_msg", "Failed to send message");
+        return -1;
+    }
+    return 0;
+}
+static int send_msg_to_all_clients(Server *server, const char *msg) {
+    LinkNode *cur = server->clients;
+    while (cur != NULL) {
+        Client *client = (Client*)cur->data;
+        if (send_msg(server, client, msg) < 0) {
+            RepeatedError("send_msg_to_all_clients");
+            return -1;
+        }
+        cur = cur->next;
+    }
+    return 0;
 }
 
 
@@ -59,6 +79,13 @@ Server *ServerCreate(const char *name, uint16_t port,
             return NULL;
         }
         STR_ASSIGN_TO_SCRATCH(server->name, name, NULL);
+        server->port = port;
+        server->clients = NULL;
+        #ifdef _WIN32
+        server->temp_socket = INVALID_SOCKET;
+        #elif __linux__
+        server->temp_socket = -1;
+        #endif
         // initialize the listen socket
         server->listen_socket = socket(AF_INET, SOCK_STREAM, 0);
         #ifdef _WIN32
@@ -111,6 +138,7 @@ void ServerRelease(Server *server) {
 
 #ifdef __linux__
 int ServerMainloop(Server *server) {
+    char* msg_for_send = NULL;
     int epoll_fd = epoll_create(1);
     if (epoll_fd < 0) {
         EpollError("ServerMainloop", "Failed to create epoll fd");
@@ -121,6 +149,13 @@ int ServerMainloop(Server *server) {
     ev.data.ptr = (void*)server;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server->listen_socket, &ev) < 0) { // Note: ev will be copied
         EpollError("ServerMainloop", "Failed to add listen socket to epoll");
+        return -1;
+    }
+    int stdin_fd = fileno(stdin);
+    ev.events = EPOLLIN;
+    ev.data.ptr = &stdin_fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, stdin_fd, &ev) < 0) {
+        EpollError("ServerMainloop", "Failed to add stdin to epoll");
         return -1;
     }
     struct epoll_event events[128];
@@ -137,17 +172,27 @@ int ServerMainloop(Server *server) {
         }
         if (nfds > 0) {
             for(int i = 0; i < nfds; i++) {
-                if (events[i].data.ptr == (void*)server) { // listen socket have a new connection
+                if (events[i].data.ptr == &stdin_fd) { // stdin have some input
+                    char *buffer = readLine(STDIN_BUFFER_SIZE);
+                    if (buffer == NULL) {
+                        RepeatedError("ServerMainloop");
+                        return -1;
+                    }
+                    if (msg_for_send != NULL) {
+                        free(msg_for_send);
+                    }
+                    msg_for_send = buffer;
+                } else if (events[i].data.ptr == (void*)server) { // listen socket have a new connection
                     struct sockaddr_in addr;
                     socklen_t addr_len = sizeof(addr);
                     int client_socket = accept(server->listen_socket, (struct sockaddr*)&addr, &addr_len);
                     if (client_socket < 0) {
                         continue;
                     }
-                    if (non_block(client_socket) < 0) {
-                        close(client_socket);
-                        continue;
-                    }
+                    // if (non_block(client_socket) < 0) {
+                    //     close(client_socket);
+                    //     continue;
+                    // }
                     memset(&ev, 0, sizeof(ev));
                     ev.events = EPOLLET | EPOLLIN;
                     Client *client = malloc(sizeof(Client));
@@ -157,10 +202,19 @@ int ServerMainloop(Server *server) {
                     }
                     client->client_socket = client_socket;
                     client->addr = addr;
-                    ClientInit(client);
+                    if (ClientInit(client, server->temp_socket, server->port) == -1) {
+                        close(client_socket);
+                        free(client);
+                        RepeatedError("ServerMainloop");
+                        return -1;
+                    }
+                    server->temp_socket = -1;
+                    LinkAppend(&server->clients, client);
                     ev.data.ptr = (void*)client;
                     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_socket, &ev) < 0) {
+                        LinkDelete(&server->clients, client);
                         close(client_socket);
+                        close(client->target_socket);
                         free(client);
                         continue;
                     }
@@ -180,7 +234,9 @@ int ServerMainloop(Server *server) {
                             EpollError("ServerMainloop", "Failed to delete client socket from epoll");
                             return -1;
                         }
+                        LinkDelete(&server->clients, client);
                         close(client->client_socket);
+                        close(client->target_socket);
                         func_ret = server->on_disconnect(server, client, (ret_len < 0) ? 1 : 0);
                         ClientRelease(client);
                         if (func_ret < 0) {
@@ -217,6 +273,16 @@ int ServerMainloop(Server *server) {
                     }
                 }
             }
+        }
+        if (msg_for_send != NULL) {
+            printf("\033[1FSending message: %s\n", msg_for_send);
+            if (send_msg_to_all_clients(server, msg_for_send) < 0) {
+                free(msg_for_send);
+                RepeatedError("ServerMainloop");
+                return -1;
+            }
+            free(msg_for_send);
+            msg_for_send = NULL;
         }
         func_ret = server->on_flip(server);
         if (func_ret < 0) {
@@ -288,6 +354,7 @@ int ServerMainloop(Server *server) {
                     client->client_socket = client_socket;
                     client->addr = addr;
                     ClientInit(client);
+                    LinkAppend(&server->clients, client);
                     WSAEVENT client_event = WSACreateEvent();
                     if (client_event == WSA_INVALID_EVENT) {
                         EventError("ServerMainloop", "Failed to create WSA event for client");
@@ -404,7 +471,7 @@ int ServerMainloop(Server *server) {
 #endif
 
 
-int ClientInit(Client* client) {
+int ClientInit(Client* client, socket_t target_socket, uint16_t server_port) {
     char* buffer = inet_ntoa(client->addr.sin_addr);
     client->ip = malloc(strlen(buffer) + 1);
     if (client->ip == NULL) {
@@ -414,6 +481,33 @@ int ClientInit(Client* client) {
     strcpy(client->ip, buffer);
     client->port = ntohs(client->addr.sin_port);
     client->message = NULL;
+    // Initialize the target socket
+    if SOCKET_IS_INVALID(target_socket) {
+        char buf[64] = {0};
+        int port;
+        if (recv(client->client_socket, buf, 64, 0) < 0) {
+            SocketError("ClientInit", "Failed to receive message from client");
+            return -1;
+        }
+        if ((port = atoi(buf)) == 0 || port > 65535) {
+            SocketError("ClientInit", "Invalid port number");
+            return -1;
+        }
+        Server temp_server = {.port = server_port,
+            #ifdef _WIN32
+            .listen_socket = INVALID_SOCKET
+            #elif __linux__
+            .listen_socket = -1
+            #endif
+            };
+        if (ConnectServerTo(&temp_server, client->ip, port) == -1) {
+            RepeatedError("ClientInit");
+            return -1;
+        }
+        client->target_socket = temp_server.temp_socket;
+    } else {
+        client->target_socket = target_socket;
+    }
     return 0;
 }
 
@@ -421,4 +515,89 @@ void ClientRelease(Client* client) {
     if (client->ip != NULL) free(client->ip);
     if (client->message != NULL) free(client->message);
     free(client);
+}
+
+void LinkAppend(LinkNode **head, void *data) {
+    LinkNode *node = malloc(sizeof(LinkNode));
+    if (node == NULL) {
+        MemoryError("LinkAppend", "Failed to allocate memory for node");
+        return;
+    }
+    node->data = data;
+    node->next = NULL;
+    if (*head == NULL) {
+        *head = node;
+        return;
+    }
+    LinkNode *cur = *head;
+    while (cur->next != NULL) {
+        cur = cur->next;
+    }
+    cur->next = node;
+}
+
+void LinkDelete(LinkNode **head, void *data) {
+    LinkNode *cur = *head;
+    if (cur == NULL) return;
+    if (cur->data == data) {
+        *head = cur->next;
+        free(cur);
+        return;
+    }
+    while (cur->next != NULL) {
+        if (cur->next->data == data) {
+            LinkNode *next = cur->next;
+            cur->next = next->next;
+            free(next);
+            return;
+        }
+        cur = cur->next;
+    }
+}
+
+void LinkRelease(LinkNode **head) {
+    LinkNode *cur = *head;
+    while (cur != NULL) {
+        LinkNode *next = cur->next;
+        free(cur);
+        cur = next;
+    }
+    *head = NULL;
+}
+
+int ConnectServerTo(Server *server, const char *ip, uint16_t port) {
+    printf("Connecting to %s:%d\n", ip, port);
+    int socket_is_valid = !SOCKET_IS_INVALID(server->listen_socket);
+    server->temp_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if SOCKET_IS_INVALID(server->temp_socket) {
+        SocketError("ConnectServerTo", "Failed to create target socket");
+        return -1;
+    }
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+    if (connect(server->temp_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        #ifdef _WIN32
+        closesocket(server->temp_socket);
+        #elif __linux__
+        close(server->temp_socket);
+        #endif
+        SocketError("ConnectServerTo", "Failed to connect to target socket");
+        return -1;
+    }
+    if (socket_is_valid) {
+        char buffer[64] = {0};
+        sprintf(buffer, "%d", server->port);
+        if (send(server->temp_socket, buffer, strlen(buffer), 0) < 0) {
+            #ifdef _WIN32
+            closesocket(server->temp_socket);
+            #elif __linux__
+            close(server->temp_socket);
+            #endif
+            SocketError("ConnectServerTo", "Failed to send message to target socket");
+            return -1;
+        }
+    }
+    return 0;
 }
