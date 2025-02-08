@@ -14,7 +14,7 @@
 #define GET_LAST_ERROR errno
 #endif
 
-
+#include "../config.h"
 
 typedef struct ERROR_TYPE{
     char* name;
@@ -37,6 +37,8 @@ void ReleaseError();
 void PrintError(); // Print all errors in the global error list, it WON'T release the error list
 Error* CatchError(const char* name); // Return the first error with the given name or NULL if not found, it WON'T release the error list
 
+#ifdef ACTIVATE_ERROR_STREAM
+#define BaseError(raiser, message) RaiseError("BaseError", raiser, message, __FILE__, __LINE__, NULL)
 #define MemoryError(raiser, message) RaiseError("MemoryError", raiser, message, __FILE__, __LINE__, NULL)
 #define RepeatedError(raiser) RepeatError(raiser, __FILE__, __LINE__) // ("RepeatedError", raiser, message, NULL)
 #define SocketError(raiser, message) RaiseError("SocketError", raiser, message, __FILE__, __LINE__, NULL)
@@ -44,6 +46,28 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define SystemError(raiser, message) RaiseError("SystemError", raiser, message, __FILE__, __LINE__, NULL)
 #define EventError(raiser, message) RaiseError("EventError", raiser, message, __FILE__, __LINE__, NULL)
 #define ThreadError(raiser, message) RaiseError("ThreadError", raiser, message, __FILE__, __LINE__, NULL)
+#define CommandError(raiser, message) RaiseError("CommandError", raiser, message, __FILE__, __LINE__, NULL)
+#define NameError(raiser, message) RaiseError("NameError", raiser, message, __FILE__, __LINE__, NULL)
+#define RuntimeError(raiser, message) RaiseError("RuntimeError", raiser, message, __FILE__, __LINE__, NULL)
+#else
+#define BaseError(raiser, message)
+#define MemoryError(raiser, message)
+#define RepeatedError(raiser)
+#define SocketError(raiser, message)
+#define EpollError(raiser, message)
+#define SystemError(raiser, message)
+#define EventError(raiser, message)
+#define ThreadError(raiser, message)
+#define CommandError(raiser, message)
+#define NameError(raiser, message)
+#define RuntimeError(raiser, message)
+#endif
+
+#ifdef SHOW_FUNCTION_CALL
+#define IntoFunction(func) printf("Into function: %s\n", func)
+#else
+#define IntoFunction(func)
+#endif
 
 #ifdef __linux__
 #define RED_TERMINAL "\033[31m"

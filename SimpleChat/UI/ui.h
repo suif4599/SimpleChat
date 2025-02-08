@@ -2,6 +2,7 @@
 #define __UI_H__
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "../../ERROR/error.h"
 #include "../../config.h"
 

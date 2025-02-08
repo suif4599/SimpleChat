@@ -1,11 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "SimpleChat/WEB/client.h"
 #include "ERROR/error.h"
 #include "MACRO/macro.h"
 #include "SimpleChat/WEB/client.h"
 
 int on_connect(Server* server, Client* client) {
-    printf("New client connected, ip = %s, port = %d\n", client->ip, client->port);
+    printf("New client %s(%s:%d) connected\n", client->name, client->ip, client->port);
     return 1;
 }
 int on_disconnect(Server* server, Client* client, int on_error) {
@@ -16,7 +18,7 @@ int on_disconnect(Server* server, Client* client, int on_error) {
     return 1;
 }
 int on_message(Server* server, Client* client) {
-    printf("Message received from %s %d: %s\n", client->ip, client->port, client->message);
+    printf("%s(%s:%d) says: %s\n", client->name, client->ip, client->port, client->message);
     return 1;
 }
 
@@ -27,6 +29,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     InitErrorStream();
+    if (strlen(argv[1]) > MAX_NAME_LENGTH) {
+        printf("Name too long\n");
+        return 1;
+    }
     Server *server = ServerCreate(argv[1], (uint16_t)atoi(argv[2]), on_connect, NULL, on_message, on_disconnect);
     if (server == NULL) {
         PrintError();
@@ -35,7 +41,7 @@ int main(int argc, char *argv[]) {
     }
     printf("Server created successfully\n");
     if (argc == 5) {
-        if (ConnectServerTo(server, argv[3], (uint16_t)atoi(argv[4])) == -1) {
+        if (ConnectServerTo(server, argv[3], (uint16_t)atoi(argv[4]), 1) == -1) {
             PrintError();
             ReleaseError();
             return 1;
