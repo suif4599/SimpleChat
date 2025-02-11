@@ -19,7 +19,7 @@ void LinkAppend(LinkNode **head, void *data) {
     cur->next = node;
 }
 
-void LinkDelete(LinkNode **head, void *data) {
+void LinkDeleteData(LinkNode **head, void *data) {
     LinkNode *cur = *head;
     if (cur == NULL) return;
     if (cur->data == data) {

@@ -7,5 +7,6 @@
 
 // #define SHOW_FUNCTION_CALL
 #define ACTIVATE_ERROR_STREAM
+// #define SHORT_EVAL
 
 #endif

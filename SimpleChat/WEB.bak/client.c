@@ -64,7 +64,7 @@ static int __send_msg() {
             }
             printf("\033[33mMsg sent\033[0m: %s to (%s,%d) is sent\n", msg->msg, msg->client->ip, msg->client->port);
             free((void *)msg->msg);
-            LinkDelete(&MSG_LIST, cur->data);
+            LinkDeleteData(&MSG_LIST, cur->data);
             LinkAppend(&BUSY_CLIENT_LIST, msg->client);
         } 
         else {
@@ -359,7 +359,7 @@ static int report_msg_received(Server *server, Client *client, const char *_msg)
     while (cur != NULL) {
         Client *busy_client = (Client*)cur->data;
         if (busy_client == client) {
-            LinkDelete(&BUSY_CLIENT_LIST, client);
+            LinkDeleteData(&BUSY_CLIENT_LIST, client);
             break;
         }
         cur = cur->next;
@@ -585,7 +585,7 @@ int ServerMainloop(Server *server) {
                         if (strcmp(roger->name, client->name) == 0) {
                             client->roger_socket = roger->socket;
                             free(roger->name);
-                            LinkDelete(&ROGER_SOCKET_LIST, roger);
+                            LinkDeleteData(&ROGER_SOCKET_LIST, roger);
                             flag = 1;
                         }
                         cur = cur->next;
@@ -593,7 +593,7 @@ int ServerMainloop(Server *server) {
                     if (flag == 0) {
                         RuntimeError("set_client_name", "Roger socket not found");
                         return -1;
-                    }
+                    zai}
                     client->client_socket = client_socket;
                     client->addr = addr;
                     if (ClientInit(client, server->name, server->temp_socket, server->port, server->temp_roger_socket) == -1) {
@@ -606,7 +606,7 @@ int ServerMainloop(Server *server) {
                     LinkAppend(&server->clients, client);
                     ev.data.ptr = (void*)client;
                     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_socket, &ev) < 0) {
-                        LinkDelete(&server->clients, client);
+                        LinkDeleteData(&server->clients, client);
                         close(client_socket);
                         close(client->target_socket);
                         free(client);
@@ -620,7 +620,7 @@ int ServerMainloop(Server *server) {
                     //     continue;
                     // }
                     if (send_command(server, client, "set_server_ip", client->ip) < 0) {
-                        LinkDelete(&server->clients, client);
+                        LinkDeleteData(&server->clients, client);
                         close(client_socket);
                         close(client->target_socket);
                         free(client);
@@ -628,7 +628,7 @@ int ServerMainloop(Server *server) {
                     }
                     if (server->temp_recrusion_connect) {
                         if (RecursionConnect(server) < 0) {
-                            LinkDelete(&server->clients, client);
+                            LinkDeleteData(&server->clients, client);
                             close(client_socket);
                             close(client->target_socket);
                             free(client);
@@ -652,7 +652,7 @@ int ServerMainloop(Server *server) {
                             EpollError("ServerMainloop", "Failed to delete client socket from epoll");
                             return -1;
                         }
-                        LinkDelete(&server->clients, client);
+                        LinkDeleteData(&server->clients, client);
                         close(client->client_socket);
                         close(client->target_socket);
                         func_ret = server->on_disconnect(server, client, (ret_len < 0) ? 1 : 0);
@@ -718,7 +718,7 @@ int ServerMainloop(Server *server) {
                             if (func_ret == 0) return 0;
                             continue;
                         }
-                        LinkDelete(&server->clients, client);
+                        LinkDeleteData(&server->clients, client);
                         close(client->client_socket);
                         close(client->target_socket);
                         func_ret = server->on_disconnect(server, client, (ret_len < 0) ? 1 : 0);

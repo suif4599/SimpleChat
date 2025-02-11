@@ -81,7 +81,7 @@ int ClientInit(Client* client, const char* server_name, socket_t target_socket, 
 void ClientRelease(Client* client); // Release the client, it won't close the socket, it won't raise any error
 
 void LinkAppend(LinkNode **head, void *data); // Append a new node to the end of the list
-void LinkDelete(LinkNode **head, void *data); // Delete a node from the list, it won't free data
+void LinkDeleteData(LinkNode **head, void *data); // Delete a node from the list, it won't free data
 void LinkRelease(LinkNode **head); // Release the list, it won't release the data, it won't raise any error
 
 int add_command(const char *name, CommandHandler handler); // Add a new command, return -1 if failed

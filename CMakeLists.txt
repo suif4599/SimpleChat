@@ -12,7 +12,7 @@ project(SimpleChat)
 file(GLOB_RECURSE SOURCES "*.c")
 
 # Remove all files in the build directory
-file(GLOB_RECURSE EXCLUDED_FILES "build/*.c")
+file(GLOB_RECURSE EXCLUDED_FILES "build/*.c" "SimpleChat/*.bak/*.c")
 foreach(excluded_file IN LISTS EXCLUDED_FILES)
     list(REMOVE_ITEM SOURCES ${excluded_file})
 endforeach()

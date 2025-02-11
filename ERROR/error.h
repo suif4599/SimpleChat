@@ -49,6 +49,8 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define CommandError(raiser, message) RaiseError("CommandError", raiser, message, __FILE__, __LINE__, NULL)
 #define NameError(raiser, message) RaiseError("NameError", raiser, message, __FILE__, __LINE__, NULL)
 #define RuntimeError(raiser, message) RaiseError("RuntimeError", raiser, message, __FILE__, __LINE__, NULL)
+#define IndexError(raiser, message) RaiseError("IndexError", raiser, message, __FILE__, __LINE__, NULL)
+#define AsyncError(raiser, message) RaiseError("AsyncError", raiser, message, __FILE__, __LINE__, NULL)
 #else
 #define BaseError(raiser, message)
 #define MemoryError(raiser, message)
@@ -61,6 +63,8 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define CommandError(raiser, message)
 #define NameError(raiser, message)
 #define RuntimeError(raiser, message)
+#define IndexError(raiser, message)
+#define AsyncError(raiser, message)
 #endif
 
 #ifdef SHOW_FUNCTION_CALL
