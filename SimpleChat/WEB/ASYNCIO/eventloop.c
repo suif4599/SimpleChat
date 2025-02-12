@@ -139,16 +139,20 @@ void RemoveFrameDependencyFromEventLoop(EventLoop* event_loop, AsyncFunctionFram
 // }
 
 int EventLoopRun(EventLoop* event_loop, int delay) {
-
+    int flag; // if in one loop something happens, then the delay will be skipped
+    LinkNode* node;
     while (1) {
-        LinkNode* node = event_loop->async_function_frames;
-        // show_all_frame(event_loop);
+        node = event_loop->async_function_frames;
+        flag = 0; 
         while (node != NULL) {
             AsyncFunctionFrame* frame = (AsyncFunctionFrame*)node->data;
             ASYNC_LABEL ret = CallAsyncFunctionFrame(event_loop, frame); // return -2 if it is blocked
             if (ret == -1) {
                 RepeatedError("EventLoopRun");
                 return -1;
+            }
+            if (ret != -2) { // not blocked
+                flag = 1;
             }
             if (ret == 0) {
                 node = LinkDeleteNode(&event_loop->async_function_frames, node);
@@ -162,6 +166,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
             while (sleep_node != NULL) {
                 AsyncSleepEvent* event = (AsyncSleepEvent*)sleep_node->data;
                 if (event->target_time <= current_time) { // Done
+                    flag = 1;
                     LinkNode* depend_node = event->caller_frame->dependency;
                     while (depend_node != NULL) {
                         if (depend_node->data == (void*)event) {
@@ -176,6 +181,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 sleep_node = sleep_node->next;
             }
         }
+        if (flag) continue;
         #ifdef _WIN32
         Sleep(delay);
         #elif __linux__

@@ -50,6 +50,7 @@ typedef struct {
     AsyncFunction* async_function; // reference to the async function
     ASYNC_LABEL label; // label of the async function
     void* va_data; // __VA_DATA__
+    void* saved_var; // __ASYNC_SAVED_VAR__
     LinkNode* dependency; // list of async functions that this async function depends on
 } AsyncFunctionFrame; // Frame of the async function
 
@@ -74,14 +75,36 @@ typedef struct {
         AsyncError("AWAIT", "Failed to await the function " #f); \
         return -1; \
     }
-#define AWAIT(...) \
+
+#define __SAVE_ASYNC_ARG(struct_ptr, type, name) ((struct_ptr)__ASYNC_SAVED_VAR__)->name = name;
+#define __LOAD_ASYNC_ARG(struct_ptr, type, name) name = ((struct_ptr)__ASYNC_SAVED_VAR__)->name;
+#define ASYNC_SAVE(...) \
+    __ASYNC_SAVED_VAR__ = malloc(sizeof(struct {FOREACH_DOUBLE(STRUCT_SAFE, __VA_ARGS__)})); \
+    if (__ASYNC_SAVED_VAR__ == NULL) { \
+        MemoryError("ASYNC_SAVE", "Failed to allocate memory for __ASYNC_SAVED_VAR__"); \
+        return -1; \
+    } \
+    FOREACH_DOUBLE_WITH_PREFIX(__SAVE_ASYNC_ARG, struct {FOREACH_DOUBLE(STRUCT_SAFE, __VA_ARGS__)}*, __VA_ARGS__); \
+    __ASYNC_EVENT_LOOP__->active_frame->saved_var = __ASYNC_SAVED_VAR__;
+#define ASYNC_LOAD(...) \
+    __ASYNC_SAVED_VAR__ = __ASYNC_EVENT_LOOP__->active_frame->saved_var; \
+    FOREACH_DOUBLE_WITH_PREFIX(__LOAD_ASYNC_ARG, struct {FOREACH_DOUBLE(STRUCT_SAFE, __VA_ARGS__)}*, __VA_ARGS__); \
+    free(__ASYNC_SAVED_VAR__); \
+    __ASYNC_EVENT_LOOP__->active_frame->saved_var = NULL;
+#define __ASYNC_ARG(...) (__VA_ARGS__)
+#define ASYNC_ARG(...) IF(HAS_ARG(__VA_ARGS__))(__ASYNC_ARG(__VA_ARGS__))(__ASYNC_ARG(int, __ASYNC_RESERVED_ARGUMENT__))
+
+#define AWAIT(arg, ...) \
+    ASYNC_SAVE arg; \
     FOREACH(IDENTITY, __VA_ARGS__); \
-    __ASYNC_GEN_CASE__(__COUNTER__)
+    __ASYNC_GEN_CASE__(__COUNTER__); \
+    ASYNC_LOAD arg;
 #define END_ASYNC_FUNCTION return 0;}
 
 
 #define ASYNC_DEF(func, ...) ASYNC_LABEL func VA_DEF_FUNC_SAFE(-1, int, __ASYNC_RESERVED_ARGUMENT__, \
                                                           EventLoop*, __ASYNC_EVENT_LOOP__, __VA_ARGS__) \
+                             void* __ASYNC_SAVED_VAR__; \
                              START_ASYNC_FUNCTION
 #define ASYNC_DEF_ONLY(func, ...) ASYNC_LABEL func VA_DEF_ONLY(__VA_RESERVED_ARGUMENT__, __VA_ARGS__)
 #define ASYNC_END_DEF END_ASYNC_FUNCTION; VA_END_FUNC(0);

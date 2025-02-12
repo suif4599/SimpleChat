@@ -31,6 +31,7 @@ AsyncFunctionFrame* CreateAsyncFunctionFrame(AsyncFunction* async_function) {
     async_function_frame->async_function = async_function;
     async_function_frame->label = 0;
     async_function_frame->va_data = NULL;
+    async_function_frame->saved_var = NULL;
     async_function_frame->dependency = NULL;
     return async_function_frame;
 }
