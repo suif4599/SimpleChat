@@ -186,3 +186,15 @@ int RefreshErrorStream() {
     }
     return 0;
 }
+
+void Warn(const char* message) {
+    #ifdef __linux__
+    printf(YELLOW_TERMINAL "Warning" RESET_TERMINAL ": %s\n", message);
+    #elif _WIN32
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    printf("Warning");
+    SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+    printf(": %s\n", message);
+    #endif
+}

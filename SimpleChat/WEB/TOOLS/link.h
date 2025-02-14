@@ -11,7 +11,7 @@ typedef struct LinkNodeType{
 
 
 int LinkAppend(LinkNode **head, void *data); // Append a new node to the end of the list
-void LinkDeleteData(LinkNode **head, void *data); // Delete a node from the list, it won't free data
+int LinkDeleteData(LinkNode **head, void *data); // Delete a node from the list, it won't free data, return -1 if not found, it won't raise any error
 LinkNode* LinkDeleteNode(LinkNode **head, LinkNode *node); // Delete a node from the list, it won't free data, returns the next node
 void LinkRelease(LinkNode **head); // Release the list, it won't release the data, it won't raise any error
 void LinkReleaseAndFree(LinkNode **head, void (*free_data)(void*)); // Release the list, it will free the data, it won't raise any error

@@ -20,23 +20,24 @@ int LinkAppend(LinkNode **head, void *data) {
     return 0;
 }
 
-void LinkDeleteData(LinkNode **head, void *data) {
+int LinkDeleteData(LinkNode **head, void *data) {
     LinkNode *cur = *head;
-    if (cur == NULL) return;
+    if (cur == NULL) return -1;
     if (cur->data == data) {
         *head = cur->next;
         free(cur);
-        return;
+        return 0;
     }
     while (cur->next != NULL) {
         if (cur->next->data == data) {
             LinkNode *next = cur->next;
             cur->next = next->next;
             free(next);
-            return;
+            return 0;
         }
         cur = cur->next;
     }
+    return -1;
 }
 
 LinkNode* LinkDeleteNode(LinkNode **head, LinkNode *node) {

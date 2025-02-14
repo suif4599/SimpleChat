@@ -13,7 +13,22 @@
 #define ARG_SAFE(type, name) __VA_DATA__->name = va_arg(__VA_ARGS_INNER__, type);
 #define SAVE_ARG(type, name) name = __VA_DATA__->name;
 
-
+/**
+ * @brief This macro is used to define a function with fixed signiture but takes parameters as normal
+ * 
+ * @param type1 type of the first parameter
+ * @param name1 name of the first parameter
+ * @param ... the rest of the parameters
+ * 
+ * @code
+ * ```c
+ * char* func VA_DEF_FUNC(int, x, double, y) {
+ *      printf("x = %d, y = %f\n", x, y);
+ *      if (x > 0) VA_RETURN("x is positive");
+ * VA_END_FUNC("Example Return");
+ * ```
+ * @endcode
+ */
 #define VA_DEF_FUNC(...) (va_list __VA_LIST_IN__, int __VA_ARGN_INNER__, ...) { \
     va_list __VA_ARGS_INNER__; \
     if (__VA_ARGN_INNER__ == -2) { \
@@ -30,10 +45,29 @@
         FOREACH_DOUBLE(ARG, __VA_ARGS__); \
     };
 #define VA_DEF_ONLY(...) (va_list, int, ...)
-#define VA_END_FUNC(ret_val) va_end(__VA_ARGS_INNER__); return ret_val;};
+#define VA_RETURN(ret_val) do {va_end(__VA_ARGS_INNER__); return ret_val; } while(0);
+#define VA_END_FUNC(ret_val) VA_RETURN(ret_val);};
 #define DEFINE_AND_SAVE_ARG(type, name) type name = __VA_DATA__->name;
 
+
 // Note: release __VA_DATA__
+/**
+ * @brief This macro is similar to VA_DEF_FUNC but:
+ *      it saves all the parameters to a struct
+ * 
+ * @param type1 type of the first parameter
+ * @param name1 name of the first parameter
+ * @param ... the rest of the parameters
+ * 
+ * @code
+ * ```c
+ * char* func VA_DEF_FUNC_SAFE(int, x, double, y) {
+ *      printf("x = %d, y = %f\n", x, y);
+ *      if (x > 0) VA_RETURN_SAFE("x is positive");
+ * VA_END_FUNC_SAFE("Example Return");
+ * ```
+ * @endcode
+ */
 #define VA_DEF_FUNC_SAFE(error_ret, ...) (va_list __VA_LIST_IN__, int __VA_ARGN_INNER__, ...) { \
     va_list __VA_ARGS_INNER__; \
     if (__VA_ARGN_INNER__ == -2) { \
@@ -54,12 +88,16 @@
         FOREACH_DOUBLE(ARG_SAFE, __VA_ARGS__); \
     } \
     FOREACH_DOUBLE(DEFINE_AND_SAVE_ARG, __VA_ARGS__);
-
+#define VA_RETURN_SAFE(ret_val) do {free(__VA_DATA__); va_end(__VA_ARGS_INNER__); return ret_val; } while(0);
+#define VA_END_FUNC_SAFE(ret_val) free(__VA_DATA__); VA_END_FUNC(ret_val); 
 
 // VA_CALL_WITH_VADATA(f, vadata=__VA_DATA__)
 #define VA_CALL_WITH_VADATA(f, ...) IF(IS_EMPTY(__VA_ARGS__))(f(VA_NULL, -1, __VA_DATA__))(f(VA_NULL, -1, __VA_ARGS__))
 
 #define VA_CALL_WITH_VALIST(f, valist) f(valist, -2)
+
+#define VA_DATA_STRUCT(...) struct {FOREACH_DOUBLE(STRUCT_SAFE, __VA_ARGS__)}
+
 
 extern va_list VA_NULL;
 

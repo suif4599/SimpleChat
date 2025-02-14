@@ -46,6 +46,7 @@ void ReleaseAsyncFunctionFrame(AsyncFunctionFrame* async_function_frame) {
 
 ASYNC_LABEL CallAsyncFunctionFrame(EventLoop* event_loop, AsyncFunctionFrame* async_function_frame) {
     if (async_function_frame->dependency != NULL) return -2;
+    // printf("[CallAsyncFunctionFrame]: %s\n", async_function_frame->async_function->name);
     event_loop->active_frame = async_function_frame;
     SET_VA_DATA_LABEL(async_function_frame->va_data, async_function_frame->label);
     ASYNC_LABEL ret = VA_CALL_WITH_VADATA(async_function_frame->async_function->func, async_function_frame->va_data);

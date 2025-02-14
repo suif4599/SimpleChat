@@ -36,6 +36,7 @@ void RepeatError(const char* raiser, const char* file, int line); // Repeat the 
 void ReleaseError();
 void PrintError(); // Print all errors in the global error list, it WON'T release the error list
 Error* CatchError(const char* name); // Return the first error with the given name or NULL if not found, it WON'T release the error list
+void Warn(const char* message);
 
 #ifdef ACTIVATE_ERROR_STREAM
 #define BaseError(raiser, message) RaiseError("BaseError", raiser, message, __FILE__, __LINE__, NULL)
@@ -51,6 +52,7 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define RuntimeError(raiser, message) RaiseError("RuntimeError", raiser, message, __FILE__, __LINE__, NULL)
 #define IndexError(raiser, message) RaiseError("IndexError", raiser, message, __FILE__, __LINE__, NULL)
 #define AsyncError(raiser, message) RaiseError("AsyncError", raiser, message, __FILE__, __LINE__, NULL)
+#define Warn(message) Warn(message)
 #else
 #define BaseError(raiser, message)
 #define MemoryError(raiser, message)
@@ -65,6 +67,7 @@ Error* CatchError(const char* name); // Return the first error with the given na
 #define RuntimeError(raiser, message)
 #define IndexError(raiser, message)
 #define AsyncError(raiser, message)
+#define Warn(message)
 #endif
 
 #ifdef SHOW_FUNCTION_CALL

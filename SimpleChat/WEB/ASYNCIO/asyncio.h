@@ -15,9 +15,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/epoll.h>
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -46,16 +46,28 @@ int AsyncIOInit();
 int CheckBuiltinAndCall(const char* func_name, int add_depend, va_list args); 
     // return -1 if error, 0 if found, 1 if not found
 
-void ReleaseMessage(Message* message);
 
-
-AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port, int listen_mode, int receive_mode, int use_ipv6);
-AsyncSocket* CreateAsyncSocketFromSocket(socket_t socket, struct sockaddr addr);
+AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port, int send_time_out, int recv_time_out, int listen_mode, int receive_mode, int use_ipv6);
+    // in milliseconds
+AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr addr);
 int ReleaseAsyncSocket(AsyncSocket* async_socket);
-// int AsyncSend(AsyncSocket* async_socket, const char* message);
-// int AsyncReceive(AsyncSocket* async_socket);
-
-
+/**
+ * @brief Accept the client socket **and bind it**, the client socket would be a receive socket
+ * 
+ * @param async_socket 
+ * @param result_socket 
+ * @return (*result_socket) may be NULL
+ * 
+ */
+void AsyncAccept(AsyncSocket* async_socket, AsyncSocket** result_socket); // accept the client socket **and bind it**
+/**
+ * @brief Receive one message from the socket
+ * 
+ * @param async_socket 
+ * @param msg 
+ * @return (*msg) 
+ */
+void AsyncRecv(AsyncSocket* async_socket, char** msg);
 
 AsyncFunction* CreateAsyncFunction(const char* name, AsyncCallable func);
 void ReleaseAsyncFunction(AsyncFunction* async_function);
@@ -70,7 +82,8 @@ ASYNC_LABEL CallAsyncFunctionFrame(EventLoop* event_loop, AsyncFunctionFrame* as
 
 EventLoop* CreateEventLoop();
 int ReleaseEventLoop(EventLoop* event_loop);
-int RegisterAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
+int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
+int UnBindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
 int RemoveAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
 int __RegisterAsyncFunction(EventLoop* event_loop, AsyncCallable async_function, const char* name);
 #define RegisterAsyncFunction(evlp, func) __RegisterAsyncFunction(evlp, func, #func)
@@ -83,5 +96,10 @@ int __CallAsyncFunction(EventLoop* evlp, const char* func_name, int add_depend, 
 #define ASYNC_CALL_AND_DEPEND(evlp, func, ...) __CallAsyncFunction(evlp, #func, 1, 0, evlp, ##__VA_ARGS__)
 void RemoveFrameDependencyFromEventLoop(EventLoop* event_loop, AsyncFunctionFrame* frame);
 
+int DisconnectAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
+
+
+#define ASYNC_MSG_HEADER "ASYNC_MSG_852746"
+#define GEN_ASYNC_MSG(msg) "<" ASYNC_MSG_HEADER ">" msg "</" ASYNC_MSG_HEADER ">"
 
 #endif

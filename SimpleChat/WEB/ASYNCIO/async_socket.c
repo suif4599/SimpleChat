@@ -1,6 +1,9 @@
 #include "asyncio.h"
 
-AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port, int listen_mode, int receive_mode, int use_ipv6) {
+
+AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port, 
+                               int send_time_out, int recv_time_out, // in milliseconds
+                               int listen_mode, int receive_mode, int use_ipv6) {
     AsyncSocket* wrapper = (AsyncSocket*)malloc(sizeof(AsyncSocket));
     if (wrapper == NULL) {
         MemoryError("CreateAsyncSocket", "Failed to allocate memory for wrapper");
@@ -29,41 +32,66 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port, int listen_mode, i
         ((struct sockaddr_in*)&addr)->sin_port = htons(port);
         inet_pton(AF_INET, ip, &((struct sockaddr_in*)&addr)->sin_addr);
     }
-    if (listen_mode) {
+    if (listen_mode) { // port reuse and bind
         int opt = 1;
         if (setsockopt(wrapper->socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) < 0) {
             SocketError("CreateAsyncSocket", "Failed to set socket reusable");
-            goto RELEASE_WRAPPER;
+            goto CLOSE_SOCKET;
         }
         if (bind(wrapper->socket, &addr, sizeof(addr)) < 0) {
             SocketError("CreateAsyncSocket", "Failed to bind the socket");
-            goto RELEASE_WRAPPER;
+            goto CLOSE_SOCKET;
         }
         if (listen(wrapper->socket, 5) < 0) {
             SocketError("CreateAsyncSocket", "Failed to listen on the socket");
-            goto RELEASE_WRAPPER;
+            goto CLOSE_SOCKET;
         }
     } else {
+        struct timeval timeout;
+        timeout.tv_sec = send_time_out / 1000;
+        timeout.tv_usec = (send_time_out % 1000) * 1000;
+        if (setsockopt(wrapper->socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+            SocketError("CreateAsyncSocket", "Failed to set send timeout");
+            goto CLOSE_SOCKET;
+        }
+        timeout.tv_sec = recv_time_out / 1000;
+        timeout.tv_usec = (recv_time_out % 1000) * 1000;
+        if (setsockopt(wrapper->socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+            SocketError("CreateAsyncSocket", "Failed to set receive timeout");
+            goto CLOSE_SOCKET;
+        }
         if (connect(wrapper->socket, &addr, sizeof(addr)) < 0) {
             SocketError("CreateAsyncSocket", "Failed to connect to the server");
-            goto RELEASE_WRAPPER;
+            goto CLOSE_SOCKET;
         }
     }
     wrapper->ip = (char*)malloc(strlen(ip) + 1);
     if (wrapper->ip == NULL) {
         MemoryError("CreateAsyncSocket", "Failed to allocate memory for ip");
-        goto RELEASE_WRAPPER;
+        goto CLOSE_SOCKET;
     }
     strcpy(wrapper->ip, ip);
     wrapper->port = port;
     wrapper->received_messages = NULL;
+    wrapper->caller_frame = NULL;
+    wrapper->buffer = NULL;
+    wrapper->result_temp = NULL;
     return wrapper;
+CLOSE_SOCKET:
+    #ifdef _WIN32
+    int ret = closesocket(wrapper->socket);
+    #elif __linux__
+    int ret = close(wrapper->socket);
+    #endif
+    if (ret < 0) {
+        SocketError("CreateAsyncSocket", "Failed to close the socket");
+    }
 RELEASE_WRAPPER:
     free(wrapper);
     return NULL;
 }
 
-AsyncSocket* CreateAsyncSocketFromSocket(socket_t socket, struct sockaddr addr) {
+AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr addr) {
     AsyncSocket* wrapper = (AsyncSocket*)malloc(sizeof(AsyncSocket));
     if (wrapper == NULL) {
         MemoryError("CreateAsyncSocketFromSocket", "Failed to allocate memory for wrapper");
@@ -71,6 +99,7 @@ AsyncSocket* CreateAsyncSocketFromSocket(socket_t socket, struct sockaddr addr) 
     }
     wrapper->socket = socket;
     wrapper->is_listen_socket = 0;
+    wrapper->is_receive_socket = 1;
     wrapper->is_ipv6 = addr.sa_family == AF_INET6;
     wrapper->ip = (char*)malloc(wrapper->is_ipv6 ? INET6_ADDRSTRLEN + 1: INET_ADDRSTRLEN + 1);
     if (wrapper->ip == NULL) {
@@ -78,6 +107,8 @@ AsyncSocket* CreateAsyncSocketFromSocket(socket_t socket, struct sockaddr addr) 
         goto RELEASE_WRAPPER;
     }
     wrapper->received_messages = NULL;
+    wrapper->caller_frame = NULL;
+    wrapper->buffer = NULL;
     char* ret;
     if (wrapper->is_ipv6) {
         ret = (char*)inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, wrapper->ip, INET6_ADDRSTRLEN);
@@ -90,6 +121,7 @@ AsyncSocket* CreateAsyncSocketFromSocket(socket_t socket, struct sockaddr addr) 
         SocketError("CreateAsyncSocketFromSocket", "Failed to convert ip to string");
         goto RELEASE_WRAPPER;
     }
+    wrapper->result_temp = NULL;
     return wrapper;
 RELEASE_WRAPPER:
     free(wrapper);
@@ -108,8 +140,7 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
     free(async_socket);
     LinkNode* cur = async_socket->received_messages;
     while (cur != NULL) {
-        Message* message = (Message*)cur->data;
-        ReleaseMessage(message);
+        free(cur->data);
         cur = cur->next;
     }
     LinkRelease(&async_socket->received_messages);
@@ -117,4 +148,57 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
 SOCKET_ERROR:
     SocketError("ReleaseAsyncSocket", "Failed to close the socket");
     return -1;
+}
+
+int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+    if (LinkAppend(&event_loop->bound_sockets, async_socket) == -1) {
+        RepeatedError("BindAsyncSocket");
+        return -1;
+    }
+    #ifdef _WIN32
+    #error "Not implemented"
+    #elif __linux__
+    struct epoll_event ev;
+    if (async_socket->is_listen_socket) {
+        ev.events = EPOLLIN | EPOLLET;
+    } else if (async_socket->is_receive_socket){
+        ev.events = EPOLLIN; // LT mode
+    } else {
+        ev.events = EPOLLOUT | EPOLLET;
+    }
+    ev.data.ptr = async_socket;
+    if (epoll_ctl(event_loop->epoll_fd, EPOLL_CTL_ADD, async_socket->socket, &ev) < 0) {
+        LinkDeleteData(&event_loop->bound_sockets, async_socket);
+        EpollError("RegisterAsyncSocket", "Failed to register the socket");
+        return -1;
+    }
+    #endif
+    return 0;
+}
+
+int UnBindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+    if (LinkDeleteData(&event_loop->bound_sockets, async_socket) == -1) {
+        return 0; // Not found
+    }
+    #ifdef _WIN32
+    #error "Not implemented"
+    #elif __linux__
+    if (epoll_ctl(event_loop->epoll_fd, EPOLL_CTL_DEL, async_socket->socket, NULL) < 0) {
+        EpollError("UnBindAsyncSocket", "Failed to unregister the socket");
+        return -1;
+    }
+    #endif
+    return 0;
+}
+
+int DisconnectAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+    if (UnBindAsyncSocket(event_loop, async_socket) < 0) {
+        RepeatedError("DisconnectAsyncSocket");
+        return -1;
+    }
+    if (ReleaseAsyncSocket(async_socket) < 0) {
+        RepeatedError("DisconnectAsyncSocket");
+        return -1;
+    }
+    return 0;
 }
