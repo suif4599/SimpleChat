@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
 #include <synchapi.h>

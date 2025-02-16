@@ -10,7 +10,7 @@
 
 ASYNC_DEF(serverAccept, AsyncSocket*, server_socket)
     while (1) {
-        printf("    Waiting for connection...\n");
+        printf("    Waiting for connection at (%s:%d)...\n", server_socket->ip, server_socket->port);
         static AsyncSocket* client_socket;
         AWAIT(
             ASYNC_ARG(),
@@ -44,7 +44,8 @@ ASYNC_DEF(serverRecv, AsyncSocket*, client_socket)
     }
 ASYNC_END_DEF
 
-int __main(uint16_t port) {
+int callMain(uint16_t port) {
+    if (AsyncIOInit() == -1) goto ERROR_END;
     EventLoop* evlp = CreateEventLoop();
     if (evlp == NULL) goto ERROR_END;
     if (RegisterAsyncFunction(evlp, serverAccept) == -1) goto ERROR_END;
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]) {
         PrintError();
         return -1;
     }
-    if (__main(port) == -1) {
+    if (callMain(port) == -1) {
         PrintError();
         return -1;
     }

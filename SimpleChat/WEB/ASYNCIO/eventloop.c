@@ -26,7 +26,7 @@ EventLoop* CreateEventLoop() {
     event_loop->recv_sockets = NULL;
     // the following are platform specific
     #ifdef _WIN32
-    #error "Not implemented"
+    event_loop->nEvents = 0;
     #elif __linux__
     event_loop->epoll_fd = epoll_create(1);
     if (event_loop->epoll_fd == -1) {
@@ -141,8 +141,8 @@ void RemoveFrameDependencyFromEventLoop(EventLoop* event_loop, AsyncFunctionFram
 }
 
 static int parseMessage(AsyncSocket* sock) {
-    static const int HEADER_LEN = strlen(ASYNC_MSG_HEADER) + 2;
-    static const int FOOTER_LEN = strlen(ASYNC_MSG_HEADER) + 3;
+    const int HEADER_LEN = strlen(ASYNC_MSG_HEADER) + 2;
+    const int FOOTER_LEN = strlen(ASYNC_MSG_HEADER) + 3;
     if (sock->buffer == NULL) {
         return 0;
     }
@@ -191,7 +191,7 @@ static int parseMessage(AsyncSocket* sock) {
 static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
     // printf("[handleSocketEvent]: (%s:%d)\n", sock->ip, sock->port);
     if (sock->is_listen_socket) { // corresponding to AsyncAccept
-        UnBindAsyncSocket(event_loop, sock);
+        UnbindAsyncSocket(event_loop, sock);
         struct sockaddr addr;
         socklen_t addr_len = sizeof(addr);
         int client_socket_fd = accept(sock->socket, &addr, &addr_len);
@@ -204,7 +204,7 @@ static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
             __ACCEPT_RESULT(sock) = NULL;
             return 0;
         }
-        if (UnBindAsyncSocket(event_loop, sock) < 0) {
+        if (UnbindAsyncSocket(event_loop, sock) < 0) {
             ReleaseAsyncSocket(client_socket);
             __ACCEPT_RESULT(sock) = NULL;
             RepeatedError("handleSocketEvent");
@@ -360,7 +360,21 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
 
         { // WSAEventSelect (windows)
             #ifdef _WIN32
-            #error "Not implemented"
+            if (event_loop->nEvents > 0) {
+                DWORD index = WSAWaitForMultipleEvents(event_loop->nEvents, event_loop->events, FALSE, 0, FALSE);
+                if (index == WSA_WAIT_FAILED) {
+                    EventError("EventLoopRun", "Failed to wait for events");
+                    return -1;
+                }
+                if (index != WSA_WAIT_TIMEOUT) {
+                    flag = 1;
+                    index -= WSA_WAIT_EVENT_0;
+                    if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
+                        RepeatedError("EventLoopRun");
+                        return -1;
+                    }
+                }
+            }
             #endif
         }
 
@@ -400,7 +414,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
 
 int ReleaseEventLoop(EventLoop* event_loop) {
     #ifdef _WIN32
-    #programa message("Warning: Not implemented")
+    #pragma message("Warning: Not implemented")
     #elif __linux__
     #warning "Not implemented"
     #endif

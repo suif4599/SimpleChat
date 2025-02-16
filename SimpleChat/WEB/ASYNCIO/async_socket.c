@@ -76,6 +76,14 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port,
     wrapper->caller_frame = NULL;
     wrapper->buffer = NULL;
     wrapper->result_temp = NULL;
+    #ifdef _WIN32
+    wrapper->event = WSACreateEvent();
+    if (wrapper->event == WSA_INVALID_EVENT) {
+        free(wrapper->ip);
+        SocketError("CreateAsyncSocket", "Failed to create WSA event");
+        goto CLOSE_SOCKET;
+    }
+    #endif
     return wrapper;
 CLOSE_SOCKET:
     #ifdef _WIN32
@@ -131,9 +139,9 @@ RELEASE_WRAPPER:
 int ReleaseAsyncSocket(AsyncSocket* async_socket) {
     if (!SOCKET_IS_INVALID(async_socket->socket)) {
         #ifdef _WIN32
-        if (closesocket(async_socket->socket) == SOCKET_ERROR) goto SOCKET_ERROR;
+        if (closesocket(async_socket->socket) == SOCKET_ERROR) goto SOCKET_ERROR_LABEL;
         #elif __linux__
-        if (close(async_socket->socket) < 0) goto SOCKET_ERROR;
+        if (close(async_socket->socket) < 0) goto SOCKET_ERROR_LABEL;
         #endif
     }
     if (async_socket->ip != NULL) free(async_socket->ip);
@@ -145,7 +153,7 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
     }
     LinkRelease(&async_socket->received_messages);
     return 0;
-SOCKET_ERROR:
+SOCKET_ERROR_LABEL:
     SocketError("ReleaseAsyncSocket", "Failed to close the socket");
     return -1;
 }
@@ -156,7 +164,25 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
         return -1;
     }
     #ifdef _WIN32
-    #error "Not implemented"
+    // handle event_loop->nEvents & ->events & ->ev_sockets
+    // WSAEventSelect
+    long lNetworkEvents;
+    if (async_socket->is_listen_socket) {
+        lNetworkEvents = FD_ACCEPT;
+    } else if (async_socket->is_receive_socket) {
+        lNetworkEvents = FD_READ;
+    } else {
+        lNetworkEvents = FD_WRITE;
+    }
+    if (WSAEventSelect(async_socket->socket, async_socket->event, lNetworkEvents) == SOCKET_ERROR) {
+        LinkDeleteData(&event_loop->bound_sockets, async_socket);
+        SocketError("RegisterAsyncSocket", "Failed to register the socket");
+        // printf("WSAEventSelect failed with error: %d\n", WSAGetLastError());
+        return -1;
+    }
+    event_loop->events[event_loop->nEvents] = async_socket->event;
+    event_loop->ev_sockets[event_loop->nEvents] = async_socket;
+    event_loop->nEvents++;
     #elif __linux__
     struct epoll_event ev;
     if (async_socket->is_listen_socket) {
@@ -176,15 +202,29 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     return 0;
 }
 
-int UnBindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+int UnbindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     if (LinkDeleteData(&event_loop->bound_sockets, async_socket) == -1) {
         return 0; // Not found
     }
     #ifdef _WIN32
-    #error "Not implemented"
+    if (WSAEventSelect(async_socket->socket, async_socket->event, 0) == SOCKET_ERROR) {
+        LinkDeleteData(&event_loop->bound_sockets, async_socket);
+        EpollError("UnbindAsyncSocket", "Failed to unbind the socket");
+        return -1;
+    }
+    event_loop->nEvents--;
+    for (int i = event_loop->nEvents; i >= 0; i--) {
+        if (event_loop->ev_sockets[i] == async_socket) {
+            for (int j = i; j < event_loop->nEvents; j++) {
+                event_loop->events[j] = event_loop->events[j + 1];
+                event_loop->ev_sockets[j] = event_loop->ev_sockets[j + 1];
+            }
+            break;
+        }
+    }
     #elif __linux__
     if (epoll_ctl(event_loop->epoll_fd, EPOLL_CTL_DEL, async_socket->socket, NULL) < 0) {
-        EpollError("UnBindAsyncSocket", "Failed to unregister the socket");
+        EpollError("UnbindAsyncSocket", "Failed to unbind the socket");
         return -1;
     }
     #endif
@@ -192,7 +232,7 @@ int UnBindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
 }
 
 int DisconnectAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
-    if (UnBindAsyncSocket(event_loop, async_socket) < 0) {
+    if (UnbindAsyncSocket(event_loop, async_socket) < 0) {
         RepeatedError("DisconnectAsyncSocket");
         return -1;
     }

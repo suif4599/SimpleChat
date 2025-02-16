@@ -9,6 +9,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #elif __linux__
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -18,6 +20,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <sys/time.h>
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +28,7 @@
 #include "../TOOLS/link.h"
 #include "../../../MACRO/macro.h"
 #include "async_grammar.h"
-#include <sys/time.h>
+
 
 
 int AsyncSleep(int millisec);
@@ -83,7 +86,7 @@ ASYNC_LABEL CallAsyncFunctionFrame(EventLoop* event_loop, AsyncFunctionFrame* as
 EventLoop* CreateEventLoop();
 int ReleaseEventLoop(EventLoop* event_loop);
 int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
-int UnBindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
+int UnbindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
 int RemoveAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
 int __RegisterAsyncFunction(EventLoop* event_loop, AsyncCallable async_function, const char* name);
 #define RegisterAsyncFunction(evlp, func) __RegisterAsyncFunction(evlp, func, #func)

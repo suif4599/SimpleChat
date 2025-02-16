@@ -30,7 +30,7 @@
 #define DEFER(id) id EMPTY()
 #define EVAL(...) __VA_ARGS__
 
-#define __FOREACH(macro, x, ...) macro(x) DEFER(__FOREACH_)(IS_EMPTY_0(__VA_ARGS__))(macro, __VA_ARGS__)
+#define __FOREACH(macro, x, ...) macro(x) DEFER(__FOREACH_)(NOT(HAS_ARG(__VA_ARGS__)))(macro, __VA_ARGS__)
 #define __FOREACH_(x) IF(x)(EAT)(__FOREACH)
 #define IS_EMPTY_0(x, ...) IS_EMPTY_(x)
 #define EVAL1(...) EVAL(EVAL(EVAL(__VA_ARGS__)))
@@ -44,28 +44,28 @@
 #endif
 #define FOREACH(macro, ...) EVAL5(__FOREACH(macro, __VA_ARGS__))
 
-#define __FOREACH_DOUBLE(macro, x, y, ...) macro(x, y) DEFER(__FOREACH_DOUBLE_)(IS_EMPTY_0(__VA_ARGS__))(macro, __VA_ARGS__)
+#define __FOREACH_DOUBLE(macro, x, y, ...) macro(x, y) DEFER(__FOREACH_DOUBLE_)(NOT(HAS_ARG(__VA_ARGS__)))(macro, __VA_ARGS__)
 #define __FOREACH_DOUBLE_(x) IF(x)(EAT)(__FOREACH_DOUBLE)
 #define FOREACH_DOUBLE(macro, ...) EVAL5(__FOREACH_DOUBLE(macro, __VA_ARGS__))
 
 #define __FOREACH_WITH_PREFIX(macro, prefix, x, ...) \
-    macro(prefix, x) DEFER(__FOREACH_WITH_PREFIX_)(prefix, IS_EMPTY_0(__VA_ARGS__))(macro, prefix, __VA_ARGS__)
+    macro(prefix, x) DEFER(__FOREACH_WITH_PREFIX_)(prefix, NOT(HAS_ARG(__VA_ARGS__)))(macro, prefix, __VA_ARGS__)
 #define __FOREACH_WITH_PREFIX_(prefix, x) IF(x)(EAT)(__FOREACH_WITH_PREFIX)
 #define FOREACH_WITH_PREFIX(macro, prefix, ...) EVAL5(__FOREACH_WITH_PREFIX(macro, prefix, __VA_ARGS__))
 
 #define __FOREACH_DOUBLE_WITH_PREFIX(macro, prefix, x, y, ...) macro(prefix, x, y) \
-    DEFER(__FOREACH_DOUBLE_WITH_PREFIX_)(prefix, IS_EMPTY_0(__VA_ARGS__))(macro, prefix, __VA_ARGS__)
+    DEFER(__FOREACH_DOUBLE_WITH_PREFIX_)(prefix, NOT(HAS_ARG(__VA_ARGS__)))(macro, prefix, __VA_ARGS__)
 #define __FOREACH_DOUBLE_WITH_PREFIX_(prefix, x) IF(x)(EAT)(__FOREACH_DOUBLE_WITH_PREFIX)
 #define FOREACH_DOUBLE_WITH_PREFIX(macro, prefix, ...) EVAL5(__FOREACH_DOUBLE_WITH_PREFIX(macro, prefix, __VA_ARGS__))
 
 
 #define __FOREACH_WITH_DOUBLE_PREFIX(macro, prefix1, prefix2, x, ...) macro(prefix1, prefix2, x) \
-    DEFER(__FOREACH_WITH_DOUBLE_PREFIX_)(prefix1, prefix2, IS_EMPTY_0(__VA_ARGS__))(macro, prefix1, prefix2, __VA_ARGS__)
+    DEFER(__FOREACH_WITH_DOUBLE_PREFIX_)(prefix1, prefix2, NOT(HAS_ARG(__VA_ARGS__)))(macro, prefix1, prefix2, __VA_ARGS__)
 #define __FOREACH_WITH_DOUBLE_PREFIX_(prefix1, prefix2, x) IF(x)(EAT)(__FOREACH_WITH_DOUBLE_PREFIX)
 #define FOREACH_WITH_DOUBLE_PREFIX(macro, prefix1, prefix2, ...) EVAL5(__FOREACH_WITH_DOUBLE_PREFIX(macro, prefix1, prefix2, __VA_ARGS__))
 
 #define __FOREACH_WITH_TRIPLE_PREFIX(macro, prefix1, prefix2, prefix3, x, ...) macro(prefix1, prefix2, prefix3, x) \
-    DEFER(__FOREACH_WITH_TRIPLE_PREFIX_)(prefix1, prefix2, prefix3, IS_EMPTY_0(__VA_ARGS__))(macro, prefix1, prefix2, prefix3, __VA_ARGS__)
+    DEFER(__FOREACH_WITH_TRIPLE_PREFIX_)(prefix1, prefix2, prefix3, NOT(HAS_ARG(__VA_ARGS__)))(macro, prefix1, prefix2, prefix3, __VA_ARGS__)
 #define __FOREACH_WITH_TRIPLE_PREFIX_(prefix1, prefix2, prefix3, x) IF(x)(EAT)(__FOREACH_WITH_TRIPLE_PREFIX)
 #define FOREACH_WITH_TRIPLE_PREFIX(macro, prefix1, prefix2, prefix3, ...) EVAL5(__FOREACH_WITH_TRIPLE_PREFIX(macro, prefix1, prefix2, prefix3, __VA_ARGS__))
 

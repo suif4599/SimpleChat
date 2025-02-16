@@ -47,7 +47,7 @@ void ForceExit(const char* name, const char* raiser, const char* message) {
 }
 
 
-void RaiseError(const char* name, const char* raiser, const char* message, const char* file, int line, void* data) {
+void __RaiseError(const char* name, const char* raiser, const char* message, const char* file, int line, void* data, int _errno) {
     Error* error = malloc(sizeof(Error));
     if (error == NULL)
         ForceExit(name, raiser, message);
@@ -70,6 +70,28 @@ void RaiseError(const char* name, const char* raiser, const char* message, const
     error->line = line;
     error->data = data;
     error->next = GLOBAL_ERROR;
+    error->_errno = _errno;
+    #ifdef _WIN32
+    if (data == NULL && GLOBAL_ERROR == NULL) {
+        LPVOID lpMsgBuf;
+        FormatMessage(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+            FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            GET_LAST_ERROR,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPTSTR)&lpMsgBuf,
+            0,
+            NULL
+        );
+        error->data = (char*)malloc(strlen((char*)lpMsgBuf) + 1);
+        if (error->data == NULL)
+            ForceExit(name, raiser, message);
+        strcpy(error->data, (char*)lpMsgBuf);
+        LocalFree(lpMsgBuf);
+    }
+    #endif
     GLOBAL_ERROR = error;
 }
 
@@ -103,6 +125,8 @@ void PrintError() {
     SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
     #endif
     Error* error = GLOBAL_ERROR;
+    int _errno = -1;
+    char* data = NULL;
     while (error != NULL) {
         #ifdef __linux__
         printf(YELLOW_TERMINAL "%s" RESET_TERMINAL " from " BOLD_TERMINAL "%s" RESET_TERMINAL " in " BOLD_TERMINAL "%s" RESET_TERMINAL ", line %d\n", 
@@ -122,16 +146,21 @@ void PrintError() {
         printf(", line %d\n", error->line);
         #endif
         printf("    %s\n", error->message);
+        _errno = error->_errno;
+        data = error->data;
         error = error->next;
     }
     #ifdef __linux__
     printf(RED_TERMINAL "System error info for %d:" RESET_TERMINAL "\n", GET_LAST_ERROR);
     #elif _WIN32
     SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
-    printf("System error info for %d:\n", GET_LAST_ERROR);
+    printf("System error info for %d:\n", _errno);
     SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
     #endif
-    print_system_error(NULL);
+    if (data != NULL)
+        printf("    %s\n", data);
+    else
+        print_system_error(NULL);
 }
 
 Error* CatchError(const char* name) {

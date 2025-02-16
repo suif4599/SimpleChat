@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 
-# Release mode by default
+
+set(CMAKE_C_COMPILER "C:\\msys64\\mingw64\\bin\\gcc.exe")
+
+if(MSVC)
+    message(FATAL_ERROR "GCC is required to build this project")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
@@ -26,6 +32,4 @@ if(WIN32)
     add_compile_definitions(_WINSOCK_DEPRECATED_NO_WARNINGS)
 endif()
 
-if(MSVC)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-endif()
+

@@ -60,6 +60,10 @@ typedef struct {
     char* buffer;
     AsyncFunctionFrame* caller_frame;
     void** result_temp;
+    // The following are platform specific
+    #ifdef _WIN32
+    WSAEVENT event;
+    #endif
 } AsyncSocket;
 
 typedef struct {
@@ -72,6 +76,9 @@ typedef struct {
     LinkNode* recv_sockets; // list of recv async sockets, typeof(data) = AsyncSocket*
     // the following are platform specific
     #ifdef _WIN32
+    WSAEVENT events[WSA_MAXIMUM_WAIT_EVENTS];
+    AsyncSocket* ev_sockets[WSA_MAXIMUM_WAIT_EVENTS];
+    int nEvents;
     #elif __linux__
     int epoll_fd;
     struct epoll_event events[EPOLL_EVENT_NUM];

@@ -9,6 +9,6 @@
         return retval; \
     } \
     strcpy(dest, src); \
-} while (0)
+} while (0);
 
 #endif

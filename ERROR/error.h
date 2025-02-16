@@ -2,6 +2,7 @@
 #define __ERROR_H__
 
 #ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 #else
     #include <errno.h>
@@ -31,12 +32,14 @@ extern Error* GLOBAL_ERROR;
 
 int InitErrorStream(); // Initialize the error stream, return 0 if success, otherwise return -1
 int RefreshErrorStream(); // Refresh the error stream, it should be called in the mainloop, return 0 if success, otherwise return -1
-void RaiseError(const char* name, const char* raiser, const char* message, const char* file, int line, void* data); // Raise a new error, it will be added to the global error list
+void __RaiseError(const char* name, const char* raiser, const char* message, const char* file, int line, void* data, int _errno); // Raise a new error, it will be added to the global error list
 void RepeatError(const char* raiser, const char* file, int line); // Repeat the last error, used if the function doesn't handle the error
 void ReleaseError();
 void PrintError(); // Print all errors in the global error list, it WON'T release the error list
 Error* CatchError(const char* name); // Return the first error with the given name or NULL if not found, it WON'T release the error list
 void Warn(const char* message);
+
+#define RaiseError(name, raiser, message, file, line, data) __RaiseError(name, raiser, message, file, line, data, GET_LAST_ERROR)
 
 #ifdef ACTIVATE_ERROR_STREAM
 #define BaseError(raiser, message) RaiseError("BaseError", raiser, message, __FILE__, __LINE__, NULL)
