@@ -1,4 +1,5 @@
 #include "asyncio.h"
+#include <stdio.h>
 
 int AsyncIOInit() {
     #ifdef _WIN32
@@ -123,11 +124,17 @@ AsyncFunction* GetAsyncFunctionByName(EventLoop* event_loop, const char* name) {
     NameError("GetAsyncFunctionByName", "Failed to find the async function");
     return NULL;
 }
-
+/**
+ * @brief it won't remove frame from event_loop->async_function_frames
+*/
 void RemoveFrameDependencyFromEventLoop(EventLoop* event_loop, AsyncFunctionFrame* frame) {
     LinkNode* frame_node = event_loop->async_function_frames;
     while (frame_node != NULL) {
         AsyncFunctionFrame* f = (AsyncFunctionFrame*)frame_node->data;
+        if (f == frame) {
+            frame_node = frame_node->next;
+            continue;
+        }
         LinkNode* dependency_node = f->dependency;
         while (dependency_node != NULL) {
             if (dependency_node->data == (void*)frame) {
@@ -155,7 +162,7 @@ static int parseMessage(AsyncSocket* sock) {
             continue;
         }
         int j = i + HEADER_LEN;
-        while (j < len - FOOTER_LEN) {
+        while (j <= len - FOOTER_LEN) {
             if (strncmp(sock->buffer + j, "</" ASYNC_MSG_HEADER ">", FOOTER_LEN) != 0) {
                 j++;
                 continue;
@@ -166,6 +173,7 @@ static int parseMessage(AsyncSocket* sock) {
                 return -1;
             }
             strncpy(message, sock->buffer + i + HEADER_LEN, j - i - HEADER_LEN);
+            message[j - i - HEADER_LEN] = '\0';
             if (LinkAppend(&sock->received_messages, message) < 0) {
                 RepeatedError("parseMessage");
                 free(message);
@@ -195,7 +203,7 @@ static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
         struct sockaddr addr;
         socklen_t addr_len = sizeof(addr);
         int client_socket_fd = accept(sock->socket, &addr, &addr_len);
-        if (client_socket_fd < 0) {
+        if SOCKET_IS_INVALID(client_socket_fd) {
             __ACCEPT_RESULT(sock) = NULL;
             return 0;
         }
@@ -255,17 +263,16 @@ static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
     }
 }
 
-// void show_all_frame(EventLoop* event_loop) {
-//     printf("[show_all_frame]: begin\n");
-//     LinkNode* node = event_loop->async_function_frames;
-//     while (node != NULL) {
-//         AsyncFunctionFrame* frame = (AsyncFunctionFrame*)node->data;
-//         printf("[show_all_frame]: frame for <%s>\n", frame->async_function->name);
-//         node = node->next;
-//         printf("[show_all_frame]: next, is_null = %d\n", node == NULL);
-//     }
-//     printf("[show_all_frame]: end\n");
-// }
+void show_all_frame(EventLoop* event_loop) {
+    printf("[show_all_frame]: begin\n");
+    LinkNode* node = event_loop->async_function_frames;
+    while (node != NULL) {
+        AsyncFunctionFrame* frame = (AsyncFunctionFrame*)node->data;
+        printf("[show_all_frame]: frame for <%s>\n", frame->async_function->name);
+        node = node->next;
+    }
+    printf("[show_all_frame]: end\n");
+}
 #define __RECV_RESULT(s) *((char**)(s->result_temp))
 int EventLoopRun(EventLoop* event_loop, int delay) {
     int flag; // if in one loop something happens, then the delay will be skipped
@@ -283,23 +290,26 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
             // printf("[EventLoopRun]: Main Event Loop\n");
             while (node != NULL) {
                 AsyncFunctionFrame* frame = (AsyncFunctionFrame*)node->data;
-                ASYNC_LABEL ret = CallAsyncFunctionFrame(event_loop, frame); // return -2 if it is blocked
-                // printf("[EventLoopRun]: ret of <%s> = %d\n", frame->async_function->name, ret);
+                LinkNode* next = node->next;
+                ASYNC_LABEL ret = CallAsyncFunctionFrame(event_loop, frame); // return -2 if it is blocked, return 0 if the frame is released
+                // printf("[EventLoopRun]: ret of = %d\n", ret);
                 if (ret == -1) {
-                    RepeatedError("EventLoopRun");
+                    char buffer[128];
+                    sprintf(buffer, "EventLoopRun (when calling <%s>)", frame->async_function->name);
+                    RepeatedError(buffer);
                     return -1;
                 }
                 if (ret == -2) { // blocked
-                    node = node->next;
+                    node = next;
                     continue;
                 }
                 flag = 1;
-                if (ret == 0) {
+                if (ret == 0) { // frame is released
                     node = LinkDeleteNode(&event_loop->async_function_frames, node);
-                    ReleaseAsyncFunctionFrame(frame);
+                    printf("[EventLoopRun]: frame is released\n");
                     continue;
                 }
-                node = node->next;
+                node = next;
             }
         }
 
@@ -333,6 +343,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         { // Epoll Events (linux)
             // printf("[EventLoopRun]: Epoll Events\n");
             #ifdef __linux__
+            #error "Not implemented keepalive"
             int nfds = epoll_wait(event_loop->epoll_fd, event_loop->events, EPOLL_EVENT_NUM, 0);
             if (nfds < 0) {
                 EpollError("EventLoopRun", "Failed to wait for events");
@@ -359,6 +370,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         }
 
         { // WSAEventSelect (windows)
+            // printf("[EventLoopRun]: WSAEventSelect\n");
             #ifdef _WIN32
             if (event_loop->nEvents > 0) {
                 DWORD index = WSAWaitForMultipleEvents(event_loop->nEvents, event_loop->events, FALSE, 0, FALSE);
@@ -369,6 +381,11 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 if (index != WSA_WAIT_TIMEOUT) {
                     flag = 1;
                     index -= WSA_WAIT_EVENT_0;
+                    // printf("[EventLoopRun]: WinEvent on (%s:%d)\n", event_loop->ev_sockets[index]->ip, event_loop->ev_sockets[index]->port);
+                    if (WSAResetEvent(event_loop->events[index]) == FALSE) {
+                        EventError("EventLoopRun", "Failed to reset the event");
+                        return -1;
+                    }
                     if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
                         RepeatedError("EventLoopRun");
                         return -1;
@@ -379,11 +396,23 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         }
 
         { // Recv Events
+        // NOTE: maybe recv_node will contain a invalid pointer
             // printf("[EventLoopRun]: Recv Events\n");
             LinkNode* recv_node = event_loop->recv_sockets;
             while (recv_node != NULL) {
-                // printf("[EventLoopRun]: Recv Events\n");
+                // printf("[EventLoopRun]: Recv Events, sockfd = %d\n", ((AsyncSocket*)recv_node->data)->socket);
                 AsyncSocket* sock = recv_node->data;
+                if (sock->is_closed) {
+                    printf("[EventLoopRun]: socket is closed, ip = %s, port = %d\n", sock->ip, sock->port);
+                    __RECV_RESULT(sock) = NULL;
+                    if (sock->caller_frame != NULL) {
+                        LinkDeleteData(&sock->caller_frame->dependency, sock);
+                        sock->caller_frame = NULL;
+                    }
+                    ReleaseAsyncSocket(sock);
+                    recv_node = LinkDeleteNode(&event_loop->recv_sockets, recv_node);
+                    continue;
+                }
                 if (parseMessage(sock) < 0) {
                     RepeatedError("EventLoopRun");
                     return -1;
@@ -403,6 +432,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 recv_node = recv_node->next;
             }
         }
+        // printf("[EventLoopRun]: end\n");
         if (flag) continue;
         #ifdef _WIN32
         Sleep(delay);

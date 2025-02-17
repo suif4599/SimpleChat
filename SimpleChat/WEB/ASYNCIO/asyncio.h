@@ -59,7 +59,7 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket);
  * 
  * @param async_socket 
  * @param result_socket 
- * @return (*result_socket) may be NULL
+ * @return (*result_socket), NULL if error
  * 
  */
 void AsyncAccept(AsyncSocket* async_socket, AsyncSocket** result_socket); // accept the client socket **and bind it**
@@ -68,7 +68,7 @@ void AsyncAccept(AsyncSocket* async_socket, AsyncSocket** result_socket); // acc
  * 
  * @param async_socket 
  * @param msg 
- * @return (*msg) 
+ * @return (*msg), NULL if connection closed
  */
 void AsyncRecv(AsyncSocket* async_socket, char** msg);
 
@@ -104,5 +104,6 @@ int DisconnectAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket);
 
 #define ASYNC_MSG_HEADER "ASYNC_MSG_852746"
 #define GEN_ASYNC_MSG(msg) "<" ASYNC_MSG_HEADER ">" msg "</" ASYNC_MSG_HEADER ">"
+// <ASYNC_MSG_852746>msg</ASYNC_MSG_852746>
 
 #endif

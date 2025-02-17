@@ -9,8 +9,8 @@
 
 
 ASYNC_DEF(serverAccept, AsyncSocket*, server_socket)
+    printf("    Waiting for connection at (%s:%d)...\n", server_socket->ip, server_socket->port);
     while (1) {
-        printf("    Waiting for connection at (%s:%d)...\n", server_socket->ip, server_socket->port);
         static AsyncSocket* client_socket;
         AWAIT(
             ASYNC_ARG(),
@@ -28,9 +28,9 @@ ASYNC_DEF(serverAccept, AsyncSocket*, server_socket)
 ASYNC_END_DEF
 
 ASYNC_DEF(serverRecv, AsyncSocket*, client_socket)
+    printf("    Waiting for message of (%s:%d)...\n", client_socket->ip, client_socket->port);
     while (1) {
         static char* msg;
-        printf("    Waiting for message of (%s:%d)...\n", client_socket->ip, client_socket->port);
         AWAIT(
             ASYNC_ARG(),
             COROUTINE(AsyncRecv, client_socket, &msg)

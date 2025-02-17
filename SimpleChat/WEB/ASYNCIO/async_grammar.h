@@ -56,6 +56,7 @@ typedef struct {
     int is_listen_socket;
     int is_receive_socket;
     int is_ipv6;
+    int is_closed;
     LinkNode* received_messages; // typeof(data) = char*
     char* buffer;
     AsyncFunctionFrame* caller_frame;

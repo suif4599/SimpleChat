@@ -23,6 +23,7 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port,
     }
     struct sockaddr addr;
     wrapper->is_ipv6 = use_ipv6;
+    wrapper->is_closed = 0;
     if (use_ipv6) {
         ((struct sockaddr_in6*)&addr)->sin6_family = AF_INET6;
         ((struct sockaddr_in6*)&addr)->sin6_port = htons(port);
@@ -108,6 +109,7 @@ AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr ad
     wrapper->socket = socket;
     wrapper->is_listen_socket = 0;
     wrapper->is_receive_socket = 1;
+    wrapper->is_closed = 0;
     wrapper->is_ipv6 = addr.sa_family == AF_INET6;
     wrapper->ip = (char*)malloc(wrapper->is_ipv6 ? INET6_ADDRSTRLEN + 1: INET_ADDRSTRLEN + 1);
     if (wrapper->ip == NULL) {
@@ -130,13 +132,23 @@ AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr ad
         goto RELEASE_WRAPPER;
     }
     wrapper->result_temp = NULL;
+    #ifdef _WIN32
+    wrapper->event = WSACreateEvent();
+    if (wrapper->event == WSA_INVALID_EVENT) {
+        free(wrapper->ip);
+        SocketError("CreateAsyncSocket", "Failed to create WSA event");
+        goto RELEASE_WRAPPER;
+    }
+    #endif
     return wrapper;
 RELEASE_WRAPPER:
     free(wrapper);
     return NULL;
 }
 
-int ReleaseAsyncSocket(AsyncSocket* async_socket) {
+int CloseAsyncSocket(AsyncSocket* async_socket) {
+    if (async_socket->is_closed) return 0;
+    async_socket->is_closed = 1;
     if (!SOCKET_IS_INVALID(async_socket->socket)) {
         #ifdef _WIN32
         if (closesocket(async_socket->socket) == SOCKET_ERROR) goto SOCKET_ERROR_LABEL;
@@ -144,8 +156,6 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
         if (close(async_socket->socket) < 0) goto SOCKET_ERROR_LABEL;
         #endif
     }
-    if (async_socket->ip != NULL) free(async_socket->ip);
-    free(async_socket);
     LinkNode* cur = async_socket->received_messages;
     while (cur != NULL) {
         free(cur->data);
@@ -154,8 +164,18 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
     LinkRelease(&async_socket->received_messages);
     return 0;
 SOCKET_ERROR_LABEL:
-    SocketError("ReleaseAsyncSocket", "Failed to close the socket");
+    SocketError("CloseAsyncSocket", "Failed to close the socket");
     return -1;
+}
+#include <stdio.h>
+int ReleaseAsyncSocket(AsyncSocket* async_socket) {
+    if (CloseAsyncSocket(async_socket) < 0) {
+        RepeatedError("ReleaseAsyncSocket");
+        return -1;
+    }
+    if (async_socket->ip != NULL) free(async_socket->ip);
+    free(async_socket);
+    return 0;
 }
 
 int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
@@ -236,7 +256,7 @@ int DisconnectAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
         RepeatedError("DisconnectAsyncSocket");
         return -1;
     }
-    if (ReleaseAsyncSocket(async_socket) < 0) {
+    if (CloseAsyncSocket(async_socket) < 0) {
         RepeatedError("DisconnectAsyncSocket");
         return -1;
     }

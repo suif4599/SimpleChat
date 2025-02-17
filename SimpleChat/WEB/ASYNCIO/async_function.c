@@ -43,7 +43,7 @@ void ReleaseAsyncFunctionFrame(AsyncFunctionFrame* async_function_frame) {
 
 #define SET_VA_DATA_LABEL(vadata, label) \
     ((ASYNC_HEADER_STRUCT*)(vadata))->__ASYNC_RESERVED_ARGUMENT__ = label;
-
+#include <stdio.h>
 ASYNC_LABEL CallAsyncFunctionFrame(EventLoop* event_loop, AsyncFunctionFrame* async_function_frame) {
     if (async_function_frame->dependency != NULL) return -2;
     // printf("[CallAsyncFunctionFrame]: %s\n", async_function_frame->async_function->name);
@@ -57,6 +57,7 @@ ASYNC_LABEL CallAsyncFunctionFrame(EventLoop* event_loop, AsyncFunctionFrame* as
     }
     async_function_frame->label = ret;
     if (ret == 0) {
+        printf("[CallAsyncFunctionFrame]: %s is released\n", async_function_frame->async_function->name);
         RemoveFrameDependencyFromEventLoop(event_loop, async_function_frame);
         ReleaseAsyncFunctionFrame(async_function_frame);
     }
