@@ -57,6 +57,7 @@ LinkNode* LinkDeleteNode(LinkNode **head, LinkNode *node) {
         }
         cur = cur->next;
     }
+    return NULL;
 }
 
 void LinkRelease(LinkNode **head) {
@@ -111,4 +112,15 @@ void* LinkPopFirst(LinkNode **head) {
     *head = cur->next;
     free(cur);
     return data;
+}
+
+int LinkContain(LinkNode *head, void *data) {
+    LinkNode *cur = head;
+    while (cur != NULL) {
+        if (cur->data == data) {
+            return 1;
+        }
+        cur = cur->next;
+    }
+    return 0;
 }

@@ -17,5 +17,6 @@ void LinkRelease(LinkNode **head); // Release the list, it won't release the dat
 void LinkReleaseAndFree(LinkNode **head, void (*free_data)(void*)); // Release the list, it will free the data, it won't raise any error
 void* LinkPop(LinkNode **head); // Pop the last node from the list, it won't free the node, return NULL if the list is empty
 void* LinkPopFirst(LinkNode **head); // Get the data of the node at index, return NULL if the list is empty
+int LinkContain(LinkNode *head, void *data); // Check if the list contains the data, return 1 if found, 0 if not found
 
 #endif

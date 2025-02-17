@@ -306,7 +306,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 flag = 1;
                 if (ret == 0) { // frame is released
                     node = LinkDeleteNode(&event_loop->async_function_frames, node);
-                    printf("[EventLoopRun]: frame is released\n");
+                    // printf("[EventLoopRun]: frame is released\n");
                     continue;
                 }
                 node = next;
@@ -382,13 +382,29 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                     flag = 1;
                     index -= WSA_WAIT_EVENT_0;
                     // printf("[EventLoopRun]: WinEvent on (%s:%d)\n", event_loop->ev_sockets[index]->ip, event_loop->ev_sockets[index]->port);
+                    int flag = 1;
+                    WSANETWORKEVENTS network_event;
+                    if (WSAEnumNetworkEvents(event_loop->ev_sockets[index]->socket, event_loop->events[index], &network_event) == SOCKET_ERROR) {
+                        EventError("EventLoopRun", "Failed to get network events");
+                        return -1;
+                    }
+                    // if (network_event.lNetworkEvents & FD_CLOSE) {
+                    //     // it is special because it will be linked to AsyncRecv
+                    //     if (DisconnectAsyncSocket(event_loop, event_loop->ev_sockets[index]) < 0) {
+                    //         RepeatedError("EventLoopRun");
+                    //         return -1;
+                    //     }
+                    //     flag = 0;
+                    // }
                     if (WSAResetEvent(event_loop->events[index]) == FALSE) {
                         EventError("EventLoopRun", "Failed to reset the event");
                         return -1;
                     }
-                    if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
-                        RepeatedError("EventLoopRun");
-                        return -1;
+                    if (flag) {
+                        if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
+                            RepeatedError("EventLoopRun");
+                            return -1;
+                        }
                     }
                 }
             }
@@ -403,7 +419,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 // printf("[EventLoopRun]: Recv Events, sockfd = %d\n", ((AsyncSocket*)recv_node->data)->socket);
                 AsyncSocket* sock = recv_node->data;
                 if (sock->is_closed) {
-                    printf("[EventLoopRun]: socket is closed, ip = %s, port = %d\n", sock->ip, sock->port);
+                    // printf("[EventLoopRun]: socket is closed, ip = %s, port = %d\n", sock->ip, sock->port);
                     __RECV_RESULT(sock) = NULL;
                     if (sock->caller_frame != NULL) {
                         LinkDeleteData(&sock->caller_frame->dependency, sock);
@@ -428,6 +444,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                         LinkDeleteData(&sock->caller_frame->dependency, sock);
                         sock->caller_frame = NULL;
                     }
+                    LinkDeleteData(&event_loop->recv_sockets, sock);
                 }
                 recv_node = recv_node->next;
             }

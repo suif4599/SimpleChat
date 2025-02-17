@@ -48,6 +48,13 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port,
             goto CLOSE_SOCKET;
         }
     } else {
+        if (receive_mode) {
+            int opt = 1;
+            if (setsockopt(wrapper->socket, SOL_SOCKET, SO_KEEPALIVE, (const char*)&opt, sizeof(opt)) < 0) {
+                SocketError("CreateAsyncSocket", "Failed to set socket keepalive");
+                goto CLOSE_SOCKET;
+            }
+        }
         struct timeval timeout;
         timeout.tv_sec = send_time_out / 1000;
         timeout.tv_usec = (send_time_out % 1000) * 1000;
@@ -101,6 +108,11 @@ RELEASE_WRAPPER:
 }
 
 AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr addr) {
+    int opt = 1;
+    if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, (const char*)&opt, sizeof(opt)) < 0) {
+        SocketError("CreateAsyncSocketFromSocket", "Failed to set socket keepalive");
+        return NULL;
+    }
     AsyncSocket* wrapper = (AsyncSocket*)malloc(sizeof(AsyncSocket));
     if (wrapper == NULL) {
         MemoryError("CreateAsyncSocketFromSocket", "Failed to allocate memory for wrapper");
@@ -190,7 +202,7 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     if (async_socket->is_listen_socket) {
         lNetworkEvents = FD_ACCEPT;
     } else if (async_socket->is_receive_socket) {
-        lNetworkEvents = FD_READ;
+        lNetworkEvents = FD_READ | FD_CLOSE;
     } else {
         lNetworkEvents = FD_WRITE;
     }
