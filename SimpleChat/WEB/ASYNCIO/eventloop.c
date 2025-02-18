@@ -343,7 +343,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         { // Epoll Events (linux)
             // printf("[EventLoopRun]: Epoll Events\n");
             #ifdef __linux__
-            #error "Not implemented keepalive"
             int nfds = epoll_wait(event_loop->epoll_fd, event_loop->events, EPOLL_EVENT_NUM, 0);
             if (nfds < 0) {
                 EpollError("EventLoopRun", "Failed to wait for events");

@@ -220,7 +220,7 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     if (async_socket->is_listen_socket) {
         ev.events = EPOLLIN | EPOLLET;
     } else if (async_socket->is_receive_socket){
-        ev.events = EPOLLIN; // LT mode
+        ev.events = EPOLLIN | EPOLLERR; // LT mode, keep alive
     } else {
         ev.events = EPOLLOUT | EPOLLET;
     }
