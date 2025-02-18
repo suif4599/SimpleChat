@@ -380,21 +380,7 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 if (index != WSA_WAIT_TIMEOUT) {
                     flag = 1;
                     index -= WSA_WAIT_EVENT_0;
-                    // printf("[EventLoopRun]: WinEvent on (%s:%d)\n", event_loop->ev_sockets[index]->ip, event_loop->ev_sockets[index]->port);
                     int flag = 1;
-                    WSANETWORKEVENTS network_event;
-                    if (WSAEnumNetworkEvents(event_loop->ev_sockets[index]->socket, event_loop->events[index], &network_event) == SOCKET_ERROR) {
-                        EventError("EventLoopRun", "Failed to get network events");
-                        return -1;
-                    }
-                    // if (network_event.lNetworkEvents & FD_CLOSE) {
-                    //     // it is special because it will be linked to AsyncRecv
-                    //     if (DisconnectAsyncSocket(event_loop, event_loop->ev_sockets[index]) < 0) {
-                    //         RepeatedError("EventLoopRun");
-                    //         return -1;
-                    //     }
-                    //     flag = 0;
-                    // }
                     if (WSAResetEvent(event_loop->events[index]) == FALSE) {
                         EventError("EventLoopRun", "Failed to reset the event");
                         return -1;
