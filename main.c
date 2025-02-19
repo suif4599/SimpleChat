@@ -40,7 +40,7 @@ ASYNC_DEF(serverRecv, AsyncSocket*, client_socket)
             break;
         }
         if (strlen(msg) > 1024) {
-            printf("    Received from (%s:%d): len = %d\n", client_socket->ip, client_socket->port, strlen(msg));
+            printf("    Received from (%s:%d): len = %d\n", client_socket->ip, client_socket->port, (int)strlen(msg));
         } else
             printf("    Received from (%s:%d): %s\n", client_socket->ip, client_socket->port, msg);
         free(msg);

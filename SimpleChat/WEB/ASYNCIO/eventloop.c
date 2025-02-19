@@ -63,7 +63,6 @@ RELEASE_ASYNC_FUNCTION:
 int __CallAsyncFunction(EventLoop* evlp, const char* func_name, int add_depend, ...) {
     va_list args; // 0, evlp and other arguments
     va_start(args, add_depend);
-    // printf("[__CallAsyncFunction]: %s\n", func_name);
     int ret = CheckBuiltinAndCall(func_name, add_depend, args);
     if (ret == -1) {
 
@@ -157,7 +156,6 @@ static int parseMessage(AsyncSocket* sock) {
     }
     int i = 0;
     int len = strlen(sock->buffer);
-    // printf("[parseMessage]: raw = %s\n", sock->buffer);
     while (i < len - HEADER_LEN) {
         if (strncmp(sock->buffer + i, "<" ASYNC_MSG_HEADER ">", HEADER_LEN) != 0) {
             i++;
@@ -199,7 +197,6 @@ static int parseMessage(AsyncSocket* sock) {
 
 #define __ACCEPT_RESULT(s) *((AsyncSocket**)(s->result_temp))
 static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
-    // printf("[handleSocketEvent]: (%s:%d)\n", sock->ip, sock->port);
     if (sock->is_listen_socket) { // corresponding to AsyncAccept
         UnbindAsyncSocket(event_loop, sock);
         struct sockaddr addr;
@@ -312,7 +309,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
     int flag; // if in one loop something happens, then the delay will be skipped
     LinkNode* node;
     while (1) {
-        // printf("[EventLoopRun]: begin\n");
         node = event_loop->async_function_frames;
         if (node == NULL) {
             return 0;
@@ -322,14 +318,11 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
             RepeatedError("ServerMainloop");
             return -1;
         }
-        // show_all_frame(event_loop);
         { // Main Event Loop
-            // printf("[EventLoopRun]: Main Event Loop\n");
             while (node != NULL) {
                 AsyncFunctionFrame* frame = (AsyncFunctionFrame*)node->data;
                 LinkNode* next = node->next;
                 ASYNC_LABEL ret = CallAsyncFunctionFrame(event_loop, frame); // return -2 if it is blocked, return 0 if the frame is released
-                // printf("[EventLoopRun]: ret of = %d\n", ret);
                 if (ret == -1) {
                     char buffer[128];
                     sprintf(buffer, "EventLoopRun (when calling <%s>)", frame->async_function->name);
@@ -343,7 +336,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 flag = 1;
                 if (ret == 0) { // frame is released
                     node = LinkDeleteNode(&event_loop->async_function_frames, node);
-                    // printf("[EventLoopRun]: frame is released\n");
                     continue;
                 }
                 node = next;
@@ -351,7 +343,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         }
 
         { // Sleep Events
-            // printf("[EventLoopRun]: Sleep Events\n");
             if (event_loop->sleep_events != NULL) {
                 long long current_time = currentTimeMillisec();
                 LinkNode* sleep_node = event_loop->sleep_events;
@@ -378,7 +369,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         }
 
         { // Epoll Events (linux)
-            // printf("[EventLoopRun]: Epoll Events\n");
             #ifdef __linux__
             int nfds = epoll_wait(event_loop->epoll_fd, event_loop->events, EPOLL_EVENT_NUM, 0);
             if (nfds < 0) {
@@ -406,7 +396,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
         }
 
         { // WSAEventSelect (windows)
-            // printf("[EventLoopRun]: WSAEventSelect\n");
             #ifdef _WIN32
             if (event_loop->nEvents > 0) {
                 DWORD index = WSAWaitForMultipleEvents(event_loop->nEvents, event_loop->events, FALSE, 0, FALSE);
@@ -432,13 +421,10 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
 
         { // Recv Events
         // NOTE: maybe recv_node will contain a invalid pointer
-            // printf("[EventLoopRun]: Recv Events\n");
             LinkNode* recv_node = event_loop->recv_sockets;
             while (recv_node != NULL) {
-                // printf("[EventLoopRun]: Recv Events, sockfd = %d\n", ((AsyncSocket*)recv_node->data)->socket);
                 AsyncSocket* sock = recv_node->data;
                 if (sock->is_closed) {
-                    // printf("[EventLoopRun]: socket is closed, ip = %s, port = %d\n", sock->ip, sock->port);
                     __RECV_RESULT(sock) = NULL;
                     if (sock->caller_frame != NULL) {
                         LinkDeleteData(&sock->caller_frame->dependency, sock);
@@ -463,7 +449,8 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                         LinkDeleteData(&sock->caller_frame->dependency, sock);
                         sock->caller_frame = NULL;
                     }
-                    LinkDeleteData(&event_loop->recv_sockets, sock);
+                    recv_node = LinkDeleteNode(&event_loop->recv_sockets, recv_node);
+                    continue;
                 }
                 recv_node = recv_node->next;
             }
@@ -496,7 +483,6 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 send_node = send_node->next;
             }
         }
-        // printf("[EventLoopRun]: end\n");
         if (flag) continue;
         #ifdef _WIN32
         Sleep(delay);
@@ -507,11 +493,64 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
 }
 
 int ReleaseEventLoop(EventLoop* event_loop) {
+    if (CatchError("KeyboardInterrupt") != NULL) {
+        RepeatedError("ReleaseEventLoop");
+        return -1;
+    }
+    LinkNode* node = event_loop->async_functions;
+    while (node != NULL) {
+        ReleaseAsyncFunction((AsyncFunction*)node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->async_functions);
+    node = event_loop->async_function_frames;
+    if (node != NULL) {
+        Warn("[ReleaseEventLoop]: There are still some async coroutine unfinished");
+    }
+    while (node != NULL) {
+        ReleaseAsyncFunctionFrame((AsyncFunctionFrame*)node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->async_function_frames);
+    node = event_loop->sleep_events;
+    if (node != NULL) {
+        Warn("[ReleaseEventLoop]: There are still some sleep events unfinished");
+    }
+    while (node != NULL) {
+        free(node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->sleep_events);
+    node = event_loop->bound_sockets;
+    while (node != NULL) {
+        ReleaseAsyncSocket((AsyncSocket*)node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->bound_sockets);
+    node = event_loop->recv_sockets;
+    while (node != NULL) {
+        ReleaseAsyncSocket((AsyncSocket*)node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->recv_sockets);
+    node = event_loop->send_sockets;
+    while (node != NULL) {
+        ReleaseAsyncSocket((AsyncSocket*)node->data);
+        node = node->next;
+    }
+    LinkRelease(&event_loop->send_sockets);
     #ifdef _WIN32
-    #pragma message("Warning: Not implemented")
+    for (int i = 0; i < event_loop->nEvents; i++) {
+        if (WSACloseEvent(event_loop->events[i]) == FALSE) {
+            EventError("ReleaseEventLoop", "Failed to close the event");
+        }
+    }
     #elif __linux__
-    #warning "Not implemented"
+    if (close(event_loop->epoll_fd) < 0) {
+        EpollError("ReleaseEventLoop", "Failed to close the epoll fd");
+    }
     #endif
+    free(event_loop);
     return 0;
 }
 

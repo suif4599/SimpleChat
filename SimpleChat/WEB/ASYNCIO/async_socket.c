@@ -243,7 +243,6 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     if (WSAEventSelect(async_socket->socket, async_socket->event, lNetworkEvents) == SOCKET_ERROR) {
         LinkDeleteData(&event_loop->bound_sockets, async_socket);
         SocketError("RegisterAsyncSocket", "Failed to register the socket");
-        // printf("WSAEventSelect failed with error: %d\n", WSAGetLastError());
         return -1;
     }
     event_loop->events[event_loop->nEvents] = async_socket->event;
@@ -256,7 +255,7 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     } else if (async_socket->is_receive_socket){
         ev.events = EPOLLIN | EPOLLERR; // LT mode, keep alive
     } else {
-        ev.events = EPOLLOUT | EPOLLET | EPOLLERR;
+        ev.events = EPOLLOUT | EPOLLERR;
     }
     ev.data.ptr = async_socket;
     if (epoll_ctl(event_loop->epoll_fd, EPOLL_CTL_ADD, async_socket->socket, &ev) < 0) {

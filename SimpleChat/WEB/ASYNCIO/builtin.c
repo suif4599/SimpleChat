@@ -1,6 +1,12 @@
 #include "asyncio.h"
 #include <stdio.h>
 
+#ifdef _WIN32
+#define SEND_FLAG 0
+#elif __linux__
+#define SEND_FLAG MSG_NOSIGNAL
+#endif
+
 int CheckBuiltinAndCall(const char* func_name, int add_depend, va_list args) {
     // args: 0, evlp and other arguments
     // return -1 if error, 0 if found, 1 if not found
@@ -37,7 +43,6 @@ int CheckBuiltinAndCall(const char* func_name, int add_depend, va_list args) {
     if (strcmp(func_name, "AsyncAccept") == 0) {
         // listen socket is normalled unbound
         AsyncSocket* async_socket = va_arg(args_copy, AsyncSocket*);
-        // printf("[CheckBuiltinAndCall]: Accept: %s:%d\n", async_socket->ip, async_socket->port);
         async_socket->result_temp = (void**)va_arg(args_copy, AsyncSocket**);
         if (async_socket->caller_frame != NULL) {
             AsyncError("AsyncAccept", "The socket is already in use");
@@ -132,7 +137,7 @@ int CheckBuiltinAndCall(const char* func_name, int add_depend, va_list args) {
         }
         async_socket->result_temp = (void*)va_arg(args_copy, int*);
         int len = (int)strlen(msg);
-        int ret = send(async_socket->socket, msg, len, 0);
+        int ret = send(async_socket->socket, msg, len, SEND_FLAG);
         if (ret < 0) {
             int error = GET_LAST_ERROR;
             if (error == 
