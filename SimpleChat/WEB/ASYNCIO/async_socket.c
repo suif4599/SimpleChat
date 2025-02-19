@@ -24,6 +24,7 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port,
     struct sockaddr addr;
     wrapper->is_ipv6 = use_ipv6;
     wrapper->is_closed = 0;
+    wrapper->is_bound = 0;
     if (use_ipv6) {
         ((struct sockaddr_in6*)&addr)->sin6_family = AF_INET6;
         ((struct sockaddr_in6*)&addr)->sin6_port = htons(port);
@@ -72,6 +73,27 @@ AsyncSocket* CreateAsyncSocket(const char* ip, uint16_t port,
             SocketError("CreateAsyncSocket", "Failed to connect to the server");
             goto CLOSE_SOCKET;
         }
+        if (receive_mode) {
+            #ifdef _WIN32
+            if (shutdown(wrapper->socket, SD_SEND) == SOCKET_ERROR)
+            #elif __linux__
+            if (shutdown(wrapper->socket, SHUT_WR) < 0)
+            #endif
+            {
+                SocketError("CreateAsyncSocket", "Failed to shutdown the socket");
+                goto CLOSE_SOCKET;
+            }
+        } else {
+            #ifdef _WIN32
+            if (shutdown(wrapper->socket, SD_RECEIVE) == SOCKET_ERROR)
+            #elif __linux__
+            if (shutdown(wrapper->socket, SHUT_RD) < 0)
+            #endif
+            {
+                SocketError("CreateAsyncSocket", "Failed to shutdown the socket");
+                goto CLOSE_SOCKET;
+            }
+        }
     }
     wrapper->ip = (char*)malloc(strlen(ip) + 1);
     if (wrapper->ip == NULL) {
@@ -113,6 +135,15 @@ AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr ad
         SocketError("CreateAsyncSocketFromSocket", "Failed to set socket keepalive");
         return NULL;
     }
+    #ifdef _WIN32
+    if (shutdown(socket, SD_SEND) == SOCKET_ERROR)
+    #elif __linux__
+    if (shutdown(socket, SHUT_WR) < 0)
+    #endif
+    {
+        SocketError("CreateAsyncSocketFromSocket", "Failed to shutdown the socket");
+        return NULL;
+    }
     AsyncSocket* wrapper = (AsyncSocket*)malloc(sizeof(AsyncSocket));
     if (wrapper == NULL) {
         MemoryError("CreateAsyncSocketFromSocket", "Failed to allocate memory for wrapper");
@@ -122,6 +153,7 @@ AsyncSocket* CreateAsyncRecvSocketFromSocket(socket_t socket, struct sockaddr ad
     wrapper->is_listen_socket = 0;
     wrapper->is_receive_socket = 1;
     wrapper->is_closed = 0;
+    wrapper->is_bound = 0;
     wrapper->is_ipv6 = addr.sa_family == AF_INET6;
     wrapper->ip = (char*)malloc(wrapper->is_ipv6 ? INET6_ADDRSTRLEN + 1: INET_ADDRSTRLEN + 1);
     if (wrapper->ip == NULL) {
@@ -191,10 +223,12 @@ int ReleaseAsyncSocket(AsyncSocket* async_socket) {
 }
 
 int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+    if (async_socket->is_bound) return 0;
     if (LinkAppend(&event_loop->bound_sockets, async_socket) == -1) {
         RepeatedError("BindAsyncSocket");
         return -1;
     }
+    async_socket->is_bound = 1;
     #ifdef _WIN32
     // handle event_loop->nEvents & ->events & ->ev_sockets
     // WSAEventSelect
@@ -204,7 +238,7 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     } else if (async_socket->is_receive_socket) {
         lNetworkEvents = FD_READ | FD_CLOSE;
     } else {
-        lNetworkEvents = FD_WRITE;
+        lNetworkEvents = FD_WRITE | FD_CLOSE;
     }
     if (WSAEventSelect(async_socket->socket, async_socket->event, lNetworkEvents) == SOCKET_ERROR) {
         LinkDeleteData(&event_loop->bound_sockets, async_socket);
@@ -222,7 +256,7 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
     } else if (async_socket->is_receive_socket){
         ev.events = EPOLLIN | EPOLLERR; // LT mode, keep alive
     } else {
-        ev.events = EPOLLOUT | EPOLLET;
+        ev.events = EPOLLOUT | EPOLLET | EPOLLERR;
     }
     ev.data.ptr = async_socket;
     if (epoll_ctl(event_loop->epoll_fd, EPOLL_CTL_ADD, async_socket->socket, &ev) < 0) {
@@ -235,9 +269,11 @@ int BindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
 }
 
 int UnbindAsyncSocket(EventLoop* event_loop, AsyncSocket* async_socket) {
+    if (!async_socket->is_bound) return 0;
     if (LinkDeleteData(&event_loop->bound_sockets, async_socket) == -1) {
         return 0; // Not found
     }
+    async_socket->is_bound = 0;
     #ifdef _WIN32
     if (WSAEventSelect(async_socket->socket, async_socket->event, 0) == SOCKET_ERROR) {
         LinkDeleteData(&event_loop->bound_sockets, async_socket);

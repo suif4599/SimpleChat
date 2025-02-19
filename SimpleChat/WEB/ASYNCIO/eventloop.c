@@ -25,6 +25,7 @@ EventLoop* CreateEventLoop() {
     event_loop->sleep_events = NULL;
     event_loop->bound_sockets = NULL;
     event_loop->recv_sockets = NULL;
+    event_loop->send_sockets = NULL;
     // the following are platform specific
     #ifdef _WIN32
     event_loop->nEvents = 0;
@@ -65,6 +66,7 @@ int __CallAsyncFunction(EventLoop* evlp, const char* func_name, int add_depend, 
     // printf("[__CallAsyncFunction]: %s\n", func_name);
     int ret = CheckBuiltinAndCall(func_name, add_depend, args);
     if (ret == -1) {
+
         RepeatedError("__CallAsyncFunction");
         va_end(args);
         return -1;
@@ -260,6 +262,37 @@ static int handleSocketEvent(EventLoop* event_loop, AsyncSocket* sock) {
         }
         buffer[ret_len] = '\0';
         return 0;
+    } else {
+        // send socket
+        if (sock->buffer == NULL) {
+            return 0;
+        }
+        int len = (int)strlen(sock->buffer);
+        int ret = send(sock->socket, sock->buffer, len, 0);
+        if (ret < 0) {
+            ReleaseError();
+            if (DisconnectAsyncSocket(event_loop, sock) < 0) {
+                RepeatedError("CheckBuiltinAndCall");
+                return -1;
+            }
+            *((int*)sock->result_temp) = -1;
+            LinkDeleteData(&event_loop->active_frame->dependency, sock);
+            return 0;
+        }
+        if (ret < len) {
+            char* temp = malloc(len - ret + 1);
+            if (temp == NULL) {
+                MemoryError("handleSocketEvent", "Failed to allocate memory for temp");
+                return -1;
+            }
+            strcpy(temp, sock->buffer + ret);
+            free(sock->buffer);
+            sock->buffer = temp;
+        } else {
+            free(sock->buffer);
+            sock->buffer = NULL;
+        }
+        return 0;
     }
 }
 
@@ -274,12 +307,16 @@ void show_all_frame(EventLoop* event_loop) {
     printf("[show_all_frame]: end\n");
 }
 #define __RECV_RESULT(s) *((char**)(s->result_temp))
+#define __SEND_RESULT(s) *((int*)(s->result_temp))
 int EventLoopRun(EventLoop* event_loop, int delay) {
     int flag; // if in one loop something happens, then the delay will be skipped
     LinkNode* node;
     while (1) {
         // printf("[EventLoopRun]: begin\n");
         node = event_loop->async_function_frames;
+        if (node == NULL) {
+            return 0;
+        }
         flag = 0;
         if (RefreshErrorStream() < 0) {
             RepeatedError("ServerMainloop");
@@ -380,16 +417,13 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                 if (index != WSA_WAIT_TIMEOUT) {
                     flag = 1;
                     index -= WSA_WAIT_EVENT_0;
-                    int flag = 1;
                     if (WSAResetEvent(event_loop->events[index]) == FALSE) {
                         EventError("EventLoopRun", "Failed to reset the event");
                         return -1;
                     }
-                    if (flag) {
-                        if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
-                            RepeatedError("EventLoopRun");
-                            return -1;
-                        }
+                    if (handleSocketEvent(event_loop, event_loop->ev_sockets[index]) < 0) {
+                        RepeatedError("EventLoopRun");
+                        return -1;
                     }
                 }
             }
@@ -432,6 +466,34 @@ int EventLoopRun(EventLoop* event_loop, int delay) {
                     LinkDeleteData(&event_loop->recv_sockets, sock);
                 }
                 recv_node = recv_node->next;
+            }
+        }
+        
+        { // Send Events
+            LinkNode* send_node = event_loop->send_sockets;
+            while (send_node != NULL) {
+                AsyncSocket* sock = send_node->data;
+                if (sock->is_closed) {
+                    __SEND_RESULT(sock) = -1;
+                    if (sock->caller_frame != NULL) {
+                        LinkDeleteData(&sock->caller_frame->dependency, sock);
+                        sock->caller_frame = NULL;
+                    }
+                    ReleaseAsyncSocket(sock);
+                    send_node = LinkDeleteNode(&event_loop->send_sockets, send_node);
+                    continue;
+                }
+                if (sock->buffer == NULL) {
+                    __SEND_RESULT(sock) = 0;
+                    flag = 1;
+                    if (sock->caller_frame != NULL) {
+                        LinkDeleteData(&sock->caller_frame->dependency, sock);
+                        sock->caller_frame = NULL;
+                    }
+                    send_node = LinkDeleteNode(&event_loop->send_sockets, send_node);
+                    continue;
+                }
+                send_node = send_node->next;
             }
         }
         // printf("[EventLoopRun]: end\n");

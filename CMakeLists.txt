@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 
-
-set(CMAKE_C_COMPILER "C:\\msys64\\mingw64\\bin\\gcc.exe")
+# Set the compiler to GCC
+if(WIN32)
+    set(CMAKE_C_COMPILER "C:\\msys64\\mingw64\\bin\\gcc.exe")
+endif()
 
 if(MSVC)
     message(FATAL_ERROR "GCC is required to build this project")

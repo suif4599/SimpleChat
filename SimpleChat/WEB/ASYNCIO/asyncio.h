@@ -31,7 +31,13 @@
 
 
 
-int AsyncSleep(int millisec);
+/**
+ * @brief Suspends the execution of the current thread for the specified number of milliseconds.
+ *
+ * @param millisec The number of milliseconds to sleep.
+ * @return No return
+ */
+void AsyncSleep(int millisec);
 
 
 
@@ -71,6 +77,15 @@ void AsyncAccept(AsyncSocket* async_socket, AsyncSocket** result_socket); // acc
  * @return (*msg), NULL if connection closed
  */
 void AsyncRecv(AsyncSocket* async_socket, char** msg);
+/**
+ * @brief Send a message through the socket
+ * 
+ * @param async_socket 
+ * @param msg 
+ * 
+ * @return (*result), 0 if success, -1 if error
+ */
+void AsyncSend(AsyncSocket* async_socket, const char* msg, int* result);
 
 AsyncFunction* CreateAsyncFunction(const char* name, AsyncCallable func);
 void ReleaseAsyncFunction(AsyncFunction* async_function);

@@ -1,8 +1,8 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-#define ASYNC_RECV_BUFFER_SIZE 300
-#define STDIN_BUFFER_SIZE 300
+#define ASYNC_RECV_BUFFER_SIZE 256
+#define STDIN_BUFFER_SIZE 256
 #define MAX_NAME_LENGTH 50
 
 #ifdef __linux__

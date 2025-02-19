@@ -57,6 +57,7 @@ typedef struct {
     int is_receive_socket;
     int is_ipv6;
     int is_closed;
+    int is_bound;
     LinkNode* received_messages; // typeof(data) = char*
     char* buffer;
     AsyncFunctionFrame* caller_frame;
@@ -75,6 +76,7 @@ typedef struct {
     LinkNode* sleep_events; // list of sleep events, typeof(data) = AsyncSleepEvent*
     LinkNode* bound_sockets; // list of bound async sockets, typeof(data) = AsyncSocket*
     LinkNode* recv_sockets; // list of recv async sockets, typeof(data) = AsyncSocket*
+    LinkNode* send_sockets; // list of send async sockets, typeof(data) = AsyncSocket*
     // the following are platform specific
     #ifdef _WIN32
     WSAEVENT events[WSA_MAXIMUM_WAIT_EVENTS];
